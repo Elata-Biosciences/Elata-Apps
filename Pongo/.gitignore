@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+
+# Testing/coverage
+coverage/
+.nyc_output/
+
+# Caches / temp
+.cache/
+.tmp/
+
+# PIDs
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Build output
+# Keep dist tracked for GitHub Pages (index.html references dist/styles.css)
+# dist/

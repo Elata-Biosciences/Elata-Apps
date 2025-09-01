@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Test - Pongo</title>
+    <script src="./vendor/tone/Tone.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #0f0c29;
+            color: white;
+        }
+        button {
+            margin: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>Pongo Audio System Test</h1>
+    <p>Click "Start Audio" first, then test the different sounds:</p>
+    
+    <button id="startAudio">Start Audio</button>
+    <br>
+    <button id="testPaddleHit">Test Paddle Hit</button>
+    <button id="testWallBounce">Test Wall Bounce</button>
+    <button id="testPlayerScore">Test Player Score</button>
+    <button id="testComputerScore">Test Computer Score</button>
+    <button id="testAmbient">Toggle Ambient</button>
+
+    <script>
+        let audioSystem = null;
+        let audioReady = false;
+        let ambientPlaying = false;
+
+        // Simplified version of the AudioSystem class for testing
+        class AudioSystem {
+            constructor() {
+                this.sounds = {};
+                this.effects = {};
+                this.masterVolume = new Tone.Volume(-6).toDestination();
+                this.setupEffects();
+                this.setupSounds();
+            }
+
+            setupEffects() {
+                this.effects.reverb = new Tone.Reverb({
+                    roomSize: 0.3,
+                    dampening: 3000,
+                    wet: 0.15
+                }).connect(this.masterVolume);
+
+                this.effects.delay = new Tone.PingPongDelay({
+                    delayTime: "8n",
+                    feedback: 0.1,
+                    wet: 0.05
+                }).connect(this.effects.reverb);
+
+                this.effects.filter = new Tone.Filter({
+                    frequency: 8000,
+                    type: "lowpass",
+                    rolloff: -12
+                }).connect(this.effects.delay);
+
+                this.effects.compressor = new Tone.Compressor({
+                    threshold: -18,
+                    ratio: 4,
+                    attack: 0.003,
+                    release: 0.1
+                }).connect(this.effects.filter);
+            }
+
+            setupSounds() {
+                this.sounds.paddleHit = new Tone.FMSynth({
+                    harmonicity: 1.5,
+                    modulationIndex: 8,
+                    oscillator: { type: "sine" },
+                    modulation: { type: "square" },
+                    envelope: {
+                        attack: 0.002,
+                        decay: 0.08,
+                        sustain: 0.1,
+                        release: 0.15
+                    }
+                }).connect(this.effects.compressor);
+
+                this.sounds.wallBounce = new Tone.MembraneSynth({
+                    pitchDecay: 0.02,
+                    octaves: 3,
+                    oscillator: { type: "sine" },
+                    envelope: {
+                        attack: 0.001,
+                        decay: 0.15,
+                        sustain: 0.02,
+                        release: 0.2
+                    }
+                }).connect(this.effects.compressor);
+
+                this.sounds.playerScore = new Tone.PolySynth(Tone.Synth, {
+                    oscillator: { type: "sawtooth" },
+                    envelope: {
+                        attack: 0.01,
+                        decay: 0.3,
+                        sustain: 0.2,
+                        release: 0.8
+                    }
+                }).connect(this.effects.reverb);
+
+                this.sounds.computerScore = new Tone.PolySynth(Tone.Synth, {
+                    oscillator: { type: "square" },
+                    envelope: {
+                        attack: 0.02,
+                        decay: 0.4,
+                        sustain: 0.15,
+                        release: 0.6
+                    }
+                }).connect(this.effects.reverb);
+
+                this.sounds.ambient = new Tone.Synth({
+                    oscillator: { type: "sine" },
+                    envelope: {
+                        attack: 2,
+                        decay: 1,
+                        sustain: 0.8,
+                        release: 3
+                    }
+                }).connect(new Tone.Volume(-24).connect(this.effects.reverb));
+            }
+
+            playPaddleHit() {
+                const note = "C4";
+                this.sounds.paddleHit.triggerAttackRelease(note, "8n", Tone.now());
+            }
+
+            playWallBounce() {
+                const note = "C2";
+                this.sounds.wallBounce.triggerAttackRelease(note, "8n", Tone.now());
+            }
+
+            playPlayerScore() {
+                const notes = ["C5", "E5", "G5", "C6"];
+                notes.forEach((note, index) => {
+                    this.sounds.playerScore.triggerAttackRelease(
+                        note, 
+                        "8n", 
+                        Tone.now() + (index * 0.1)
+                    );
+                });
+            }
+
+            playComputerScore() {
+                const notes = ["G3", "Bb3", "D4"];
+                this.sounds.computerScore.triggerAttackRelease(
+                    notes, 
+                    "2n", 
+                    Tone.now()
+                );
+            }
+
+            startAmbient() {
+                this.sounds.ambient.triggerAttack("C2", Tone.now());
+            }
+
+            stopAmbient() {
+                this.sounds.ambient.triggerRelease(Tone.now() + 1);
+            }
+        }
+
+        document.getElementById('startAudio').addEventListener('click', async () => {
+            try {
+                await Tone.start();
+                audioSystem = new AudioSystem();
+                audioReady = true;
+                console.log("Audio system ready!");
+                document.getElementById('startAudio').textContent = "Audio Ready ✓";
+            } catch (error) {
+                console.error("Failed to start audio:", error);
+            }
+        });
+
+        document.getElementById('testPaddleHit').addEventListener('click', () => {
+            if (audioReady && audioSystem) {
+                audioSystem.playPaddleHit();
+            }
+        });
+
+        document.getElementById('testWallBounce').addEventListener('click', () => {
+            if (audioReady && audioSystem) {
+                audioSystem.playWallBounce();
+            }
+        });
+
+        document.getElementById('testPlayerScore').addEventListener('click', () => {
+            if (audioReady && audioSystem) {
+                audioSystem.playPlayerScore();
+            }
+        });
+
+        document.getElementById('testComputerScore').addEventListener('click', () => {
+            if (audioReady && audioSystem) {
+                audioSystem.playComputerScore();
+            }
+        });
+
+        document.getElementById('testAmbient').addEventListener('click', () => {
+            if (audioReady && audioSystem) {
+                if (ambientPlaying) {
+                    audioSystem.stopAmbient();
+                    document.getElementById('testAmbient').textContent = "Start Ambient";
+                } else {
+                    audioSystem.startAmbient();
+                    document.getElementById('testAmbient').textContent = "Stop Ambient";
+                }
+                ambientPlaying = !ambientPlaying;
+            }
+        });
+    </script>
+</body>
+</html>

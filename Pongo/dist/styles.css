@@ -1,0 +1,53 @@
+/* Minimal utility CSS to replace used Tailwind classes */
+*, *::before, *::after { box-sizing: border-box; }
+html { line-height: 1.5; -webkit-text-size-adjust: 100%; }
+body { margin: 0; }
+
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-center { justify-content: center; }
+.justify-around { justify-content: space-around; }
+.relative { position: relative; }
+.absolute { position: absolute; }
+.fixed { position: fixed; }
+.inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
+.top-4 { top: 1rem; }
+.right-4 { right: 1rem; }
+.z-50 { z-index: 50; }
+
+.w-full { width: 100%; }
+.max-w-4xl { max-width: 56rem; }
+.min-h-screen { min-height: 100vh; }
+
+.p-4 { padding: 1rem; }
+.p-8 { padding: 2rem; }
+.px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
+.py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+.mb-4 { margin-bottom: 1rem; }
+.mb-6 { margin-bottom: 1.5rem; }
+
+.rounded-lg { border-radius: 0.5rem; }
+
+.text-center { text-align: center; }
+.text-white { color: #ffffff; }
+.text-2xl { font-size: 1.5rem; line-height: 2rem; }
+.text-3xl { font-size: 1.875rem; line-height: 2.25rem; }
+.text-5xl { font-size: 3rem; line-height: 1; }
+.text-6xl { font-size: 3.75rem; line-height: 1; }
+
+.hidden { display: none; }
+.opacity-75 { opacity: 0.75; }
+.hover\:opacity-100:hover { opacity: 1; }
+
+.transition-opacity { transition-property: opacity; transition-duration: 150ms; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); }
+
+.bg-black { background-color: #000000; }
+/* Combine with opacity utility */
+.bg-black.bg-opacity-70 { background-color: rgba(0, 0, 0, 0.7); }
+
+/* Focus utilities approximation */
+.focus\:outline-none:focus { outline: 2px solid transparent; outline-offset: 2px; }
+.focus\:ring-2:focus { box-shadow: 0 0 0 2px rgba(255,255,255,0.5); }
+.focus\:ring-white:focus { box-shadow: 0 0 0 2px rgba(255,255,255,0.5); }
+.focus\:ring-opacity-50:focus { box-shadow: 0 0 0 2px rgba(255,255,255,0.5); }
