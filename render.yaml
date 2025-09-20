@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: pongo-multiplayer-server
+    env: node
+    rootDir: Pongo/server
+    buildCommand: npm install --omit=dev
+    startCommand: node server.js
+    plan: starter
+    region: singapore
+    autoDeploy: true
+    healthCheckPath: /health
+
