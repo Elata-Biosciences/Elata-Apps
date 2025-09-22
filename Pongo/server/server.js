@@ -110,7 +110,25 @@ eeg.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`realtime server listening on :${PORT}`);
-});
+function start(port = PORT) {
+  return new Promise((resolve) => {
+    server.listen(port, () => {
+      const addr = server.address();
+      console.log(`realtime server listening on :${addr && addr.port}`);
+      resolve(addr && addr.port);
+    });
+  });
+}
+
+function stop() {
+  return new Promise((resolve) => {
+    server.close(() => resolve());
+  });
+}
+
+if (require.main === module) {
+  start();
+}
+
+module.exports = { app, io, server, start, stop };
 
