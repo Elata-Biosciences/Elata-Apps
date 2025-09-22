@@ -1,0 +1,63 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Render Socket Test (Observer)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 20px; }
+    input, button { margin: 4px 0; padding: 6px 10px; }
+    #log { white-space: pre-wrap; background:#111; color:#0f0; padding:10px; height:260px; overflow:auto; }
+    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .col { display:flex; flex-direction:column; max-width:600px; }
+  </style>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+  <h1>Render Socket Test (Observer)</h1>
+  <div class="col">
+    <label>Server URL (Render):</label>
+    <input id="url" size="60" placeholder="https://YOUR-SERVICE.onrender.com" />
+    <label>Session ID to observe:</label>
+    <input id="session" size="24" placeholder="subject-123" />
+    <div class="row">
+      <button id="connect">Connect EEG</button>
+      <button id="observe">Observe</button>
+      <button id="clear">Clear Log</button>
+    </div>
+  </div>
+  <h3>Log</h3>
+  <div id="log"></div>
+
+<script>
+(function(){
+  const $ = (id)=>document.getElementById(id);
+  const log = (m)=>{ const el=$("log"); el.textContent += (typeof m==='string'?m:JSON.stringify(m)) + "\n"; el.scrollTop=el.scrollHeight; };
+  const getBase = ()=>{ const u=$("url").value.trim(); localStorage.setItem('socketTestUrl', u); return u.replace(/\/$/, ''); };
+  $("url").value = localStorage.getItem('socketTestUrl') || '';
+
+  let eeg = null, sampleCount=0, byteCount=0;
+
+  $("connect").onclick = ()=>{
+    const base = getBase(); if(!base){ alert('Enter server URL'); return; }
+    eeg = io(base + '/eeg', { transports:["websocket"], timeout: 5000 });
+    eeg.on('connect', ()=>log(['connect', eeg.id]));
+    eeg.on('meta', (m)=>log(['meta', m]));
+    eeg.on('eeg:sample', (pkt)=>{ sampleCount++; log(['sample', { t: pkt.t, len: (pkt.samples||[]).length, total: sampleCount }]); });
+    eeg.on('eeg:chunk', (buf)=>{ byteCount += (buf.byteLength||0); log(['chunk', { bytes: buf.byteLength||0, totalBytes: byteCount }]); });
+    eeg.on('connect_error', (e)=>log(['error', e.message]));
+    eeg.on('disconnect', (r)=>log(['disconnect', r]));
+  };
+
+  $("observe").onclick = ()=>{
+    if(!eeg) return alert('Connect first');
+    const id = $("session").value.trim(); if(!id) return alert('Enter session id');
+    eeg.emit('observe', id, (ack)=>log(['observe ack', ack]));
+  };
+
+  $("clear").onclick = ()=>{ $("log").textContent=''; sampleCount=0; byteCount=0; };
+})();
+</script>
+</body>
+</html>
+

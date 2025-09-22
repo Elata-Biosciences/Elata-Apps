@@ -1,0 +1,96 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Render Socket Test (Producer)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 20px; }
+    input, button { margin: 4px 0; padding: 6px 10px; }
+    #log { white-space: pre-wrap; background:#111; color:#0f0; padding:10px; height:260px; overflow:auto; }
+    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .col { display:flex; flex-direction:column; max-width:600px; }
+  </style>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+  <h1>Render Socket Test (Producer)</h1>
+  <div class="col">
+    <label>Server URL (Render):</label>
+    <input id="url" size="60" placeholder="https://YOUR-SERVICE.onrender.com" />
+    <label>Session ID:</label>
+    <input id="session" size="24" placeholder="subject-123" />
+    <div class="row">
+      <button id="connectRoot">Connect Root</button>
+      <button id="ping">Ping</button>
+    </div>
+    <div class="row">
+      <button id="connectEEG">Connect EEG</button>
+      <button id="hello">Send Hello</button>
+      <button id="sendJson">Send JSON sample</button>
+      <button id="sendBin">Send Binary chunk</button>
+    </div>
+  </div>
+  <h3>Log</h3>
+  <div id="log"></div>
+
+<script>
+(function(){
+  const $ = (id)=>document.getElementById(id);
+  const log = (m)=>{ const el=$("log"); el.textContent += (typeof m==='string'?m:JSON.stringify(m)) + "\n"; el.scrollTop=el.scrollHeight; };
+  const getBase = ()=>{ const u=$("url").value.trim(); localStorage.setItem('socketTestUrl', u); return u.replace(/\/$/, ''); };
+  $("url").value = localStorage.getItem('socketTestUrl') || '';
+
+  let root = null, eeg = null;
+
+  $("connectRoot").onclick = ()=>{
+    const base = getBase(); if(!base){ alert('Enter server URL'); return; }
+    root = io(base, { transports:["websocket"], timeout: 5000 });
+    root.on('connect', ()=>log(['root connect', root.id]));
+    root.on('pong', (msg)=>log(['pong', msg]));
+    root.on('connect_error', (e)=>log(['root error', e.message]));
+    root.on('disconnect', (r)=>log(['root disconnect', r]));
+  };
+
+  $("ping").onclick = ()=>{ if(!root){ return alert('Connect root first'); } root.emit('ping', 'hello'); };
+
+  $("connectEEG").onclick = ()=>{
+    const base = getBase(); if(!base){ alert('Enter server URL'); return; }
+    eeg = io(base + '/eeg', { transports:["websocket"], timeout: 5000 });
+    eeg.on('connect', ()=>log(['eeg connect', eeg.id]));
+    eeg.on('meta', (m)=>log(['meta', m]));
+    eeg.on('connect_error', (e)=>log(['eeg error', e.message]));
+    eeg.on('disconnect', (r)=>log(['eeg disconnect', r]));
+  };
+
+  $("hello").onclick = ()=>{
+    if(!eeg) return alert('Connect EEG first');
+    const sessionId = $("session").value || undefined;
+    eeg.emit('hello', {
+      sessionId,
+      channels: ['Fp1','Fp2','C3','C4'],
+      srate: 250,
+      units: 'uV',
+      deviceId: 'test-device'
+    }, (ack)=>log(['hello ack', ack]));
+  };
+
+  $("sendJson").onclick = ()=>{
+    if(!eeg) return alert('Connect EEG first');
+    const pkt = { t: Date.now(), seq: Math.floor(Math.random()*1e6), samples: Array.from({length:64}, (_,i)=>Math.sin(i/10)) };
+    eeg.emit('eeg:sample', pkt);
+    log(['sent json', { len: pkt.samples.length }]);
+  };
+
+  $("sendBin").onclick = ()=>{
+    if(!eeg) return alert('Connect EEG first');
+    const nCh=4, n=256; const f32=new Float32Array(nCh*n);
+    for(let i=0;i<f32.length;i++) f32[i]=Math.sin(i/20);
+    eeg.emit('eeg:chunk', f32.buffer);
+    log(['sent bin', { bytes: f32.byteLength }]);
+  };
+})();
+</script>
+</body>
+</html>
+
