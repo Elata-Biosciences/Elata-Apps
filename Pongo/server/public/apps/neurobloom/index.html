@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NeuroBloom – Symmetry Garden</title>
+  <style>
+    body{margin:0;background:#0b0f14;color:#e8eef7;font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Ubuntu,Helvetica,Arial,sans-serif}
+    header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #1a2431;background:#0f1620}
+    header h1{margin:0;font-size:16px;color:#cfe9ff}
+    main{max-width:980px;margin:16px auto;padding:0 16px;display:grid;grid-template-columns:1.2fr 1fr;gap:16px}
+    .card{background:#0f1620;border:1px solid #1a2431;border-radius:12px;padding:16px}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    input,select,button{background:#0a131e;color:#e8eef7;border:1px solid #243041;border-radius:8px;padding:8px 10px}
+    button{cursor:pointer}
+    canvas{background:#0a0f15;border:1px solid #1a2431;border-radius:12px;width:100%;height:auto}
+    .muted{color:#9bb0c9}
+    .ok{color:#6ee7b7}
+  </style>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>NeuroBloom – Symmetry Garden</h1>
+    <div class="muted">Grow plants with left–right alpha asymmetry</div>
+  </header>
+  <main>
+    <section class="card">
+      <canvas id="garden" width="840" height="420"></canvas>
+      <div class="muted" style="margin-top:8px">Tip: During calibration, relax with eyes gently closed to capture resting alpha.</div>
+    </section>
+    <section class="card">
+      <div class="row" style="margin-bottom:8px">
+        <label>Session</label>
+        <input id="sess" value="subject-123" />
+        <button id="connect">Connect EEG</button>
+        <span id="status" class="muted"></span>
+      </div>
+      <div class="row" style="margin-bottom:8px">
+        <label>Left</label>
+        <select id="chL"><option>—</option></select>
+        <label>Right</label>
+        <select id="chR"><option>—</option></select>
+        <button id="calib">Calibrate 10s</button>
+      </div>
+      <div class="muted" id="meta"></div>
+      <div class="muted" id="log" style="margin-top:8px;max-height:220px;overflow:auto;white-space:pre-wrap"></div>
+    </section>
+  </main>
+<script>
+const log = (...a)=>{ const el=document.getElementById('log'); el.textContent += a.join(' ')+'\n'; el.scrollTop=el.scrollHeight; };
+const status = (t)=> document.getElementById('status').textContent = t||'';
+
+// Simple biquad bandpass for alpha (f0=10Hz, Q~2)
+class Biquad {
+  constructor(srate, f0=10, Q=2) { this.set(srate, f0, Q); this.z1=0; this.z2=0; }
+  set(srate, f0, Q){
+    const w0 = 2*Math.PI*f0/srate; const alpha = Math.sin(w0)/(2*Q);
+    const b0 =   alpha; const b1 = 0; const b2 = -alpha;
+    const a0 = 1 + alpha; const a1 = -2*Math.cos(w0); const a2 = 1 - alpha;
+    this.b0=b0/a0; this.b1=b1/a0; this.b2=b2/a0; this.a1=a1/a0; this.a2=a2/a0;
+  }
+  process(x){ const y=this.b0*x+this.z1; this.z1=this.b1*x - this.a1*y + this.z2; this.z2=this.b2*x - this.a2*y; return y; }
+}
+
+let eeg=null, meta=null;
+let chMap = []; // channel names
+let chL=null, chR=null;
+let filtL=null, filtR=null; let powL=0, powR=0; // EMA power
+let ema=0.02; // smoothing for power
+let calibMode=false; let calibT0=0; let minL=1e9, maxL=0, minR=1e9, maxR=0;
+
+function populateChannels(){
+  const selL=document.getElementById('chL'); const selR=document.getElementById('chR');
+  selL.innerHTML=''; selR.innerHTML='';
+  for(const nm of chMap){ const o1=document.createElement('option'); o1.value=nm; o1.textContent=nm; selL.appendChild(o1);
+    const o2=document.createElement('option'); o2.value=nm; o2.textContent=nm; selR.appendChild(o2); }
+  // heuristic defaults
+  const fp1 = chMap.find(c=>/fp1/i.test(c)) || chMap[0];
+  const fp2 = chMap.find(c=>/fp2/i.test(c)) || chMap[1] || chMap[0];
+  selL.value = fp1 || '';
+  selR.value = fp2 || '';
+  chL = selL.value; chR = selR.value;
+}
+
+document.getElementById('chL').onchange = (e)=>{ chL = e.target.value; resetFilters(); };
+document.getElementById('chR').onchange = (e)=>{ chR = e.target.value; resetFilters(); };
+
+function resetFilters(){ if(!meta) return; filtL = new Biquad(meta.srate, 10, 2); filtR = new Biquad(meta.srate, 10, 2); }
+
+function startCalibration(){ if(!meta) return; calibMode=true; calibT0=performance.now(); minL=1e9; maxL=0; minR=1e9; maxR=0; status('calibrating 10s…'); }
+
+// Handle incoming data
+function handleSamplesObj(samples){ // {chName: [..]}
+  if(!meta || !chL || !chR) return;
+  const arrL = samples[chL]; const arrR = samples[chR]; if(!arrL||!arrR) return;
+  for(let i=0;i<Math.min(arrL.length, arrR.length); i++){
+    const yL = filtL.process(arrL[i]); const yR = filtR.process(arrR[i]);
+    powL = (1-ema)*powL + ema*(yL*yL); powR = (1-ema)*powR + ema*(yR*yR);
+    if(calibMode){ minL=Math.min(minL,powL); maxL=Math.max(maxL,powL); minR=Math.min(minR,powR); maxR=Math.max(maxR,powR); }
+  }
+}
+
+function handleChunk(buf){
+  if(!meta || !Array.isArray(chMap) || chMap.length<2) return;
+  const f32 = new Float32Array(buf.buffer||buf, buf.byteOffset||0, (buf.byteLength||buf.length)/4);
+  const nCh = chMap.length; if(nCh<=0) return; const n = Math.floor(f32.length / nCh);
+  const idxL = chMap.indexOf(chL); const idxR = chMap.indexOf(chR);
+  if(idxL<0||idxR<0) return;
+  for(let s=0; s<n; s++){
+    const xL = f32[s*nCh + idxL]; const xR = f32[s*nCh + idxR];
+    const yL = filtL.process(xL); const yR = filtR.process(xR);
+    powL = (1-ema)*powL + ema*(yL*yL); powR = (1-ema)*powR + ema*(yR*yR);
+    if(calibMode){ minL=Math.min(minL,powL); maxL=Math.max(maxL,powL); minR=Math.min(minR,powR); maxR=Math.max(maxR,powR); }
+  }
+}
+
+function norm(v, lo, hi){ return Math.max(0, Math.min(1, (v - lo) / Math.max(1e-9, (hi - lo)))) }
+
+function asymmetry(){ // positive => left higher alpha
+  if(calibMode && (performance.now()-calibT0)>10000){ calibMode=false; status('calibration complete'); }
+  const l = calibMode? powL : norm(powL, minL, maxL);
+  const r = calibMode? powR : norm(powR, minR, maxR);
+  const denom = Math.max(1e-6, l+r);
+  return (l - r) / denom; // -1..1
+}
+
+// Rendering
+const canvas = document.getElementById('garden'); const ctx = canvas.getContext('2d');
+let growL=0.3, growR=0.3; // persistent growth 0..1
+function draw(){
+  const W=canvas.width, H=canvas.height; ctx.clearRect(0,0,W,H);
+  // background gradient
+  const g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#0d1824'); g.addColorStop(1,'#0a0f15'); ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  // soil
+  ctx.fillStyle='#0b1f2e'; ctx.fillRect(0,H-60,W,60);
+  // stems
+  const a = asymmetry(); // -1..1
+  // growth dynamics: push growth towards side with higher alpha
+  const rate = 0.0025; growL += rate * Math.max(0, a); growR += rate * Math.max(0, -a);
+  growL = Math.max(0.05, Math.min(1, growL)); growR = Math.max(0.05, Math.min(1, growR));
+  const baseY = H-60; const maxH = H-120;
+  const stemLX = W*0.33, stemRX = W*0.66;
+  const hL = maxH*growL, hR = maxH*growR;
+  ctx.strokeStyle='#6ee7b7'; ctx.lineWidth=6; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(stemLX, baseY); ctx.lineTo(stemLX, baseY - hL); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(stemRX, baseY); ctx.lineTo(stemRX, baseY - hR); ctx.stroke();
+  // leaves
+  drawLeaf(stemLX, baseY - hL*0.6, 14, '#8ef0ca');
+  drawLeaf(stemLX, baseY - hL*0.3, 10, '#5dddb2');
+  drawLeaf(stemRX, baseY - hR*0.6, 14, '#8ec8f0');
+  drawLeaf(stemRX, baseY - hR*0.3, 10, '#5db2dd');
+  // labels
+  ctx.fillStyle='#9bb0c9'; ctx.font='14px system-ui';
+  ctx.fillText('Left alpha', stemLX-40, baseY+20);
+  ctx.fillText('Right alpha', stemRX-48, baseY+20);
+  requestAnimationFrame(draw);
+}
+function drawLeaf(x,y,r,color){ ctx.fillStyle=color; ctx.beginPath(); ctx.ellipse(x-10,y, r, r*0.6, Math.PI/6, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.ellipse(x+10,y, r, r*0.6, -Math.PI/6, 0, Math.PI*2); ctx.fill(); }
+requestAnimationFrame(draw);
+
+// Socket wiring
+function connect(){
+  try{ eeg = io('/eeg', { transports:['websocket'] }); } catch(e){ status('socket.io missing'); return; }
+  const sess = document.getElementById('sess').value||'subject-123';
+  eeg.on('connect', ()=>{ status('connected'); eeg.emit('observe', sess, (ack)=>{ if(ack?.meta) onMeta(ack.meta); }); });
+  eeg.on('connect_error', (e)=>{ status('connect error'); log('connect_error', e.message); });
+  eeg.on('meta', onMeta);
+  eeg.on('eeg:sample', (p)=>{ if(p && p.samples) handleSamplesObj(p.samples); });
+  eeg.on('eeg:chunk', handleChunk);
+}
+function onMeta(m){ meta=m; chMap = m.channels||[]; document.getElementById('meta').textContent = `srate=${m.srate} Hz, channels=${chMap.join(', ')}`; populateChannels(); resetFilters(); }
+
+document.getElementById('connect').onclick = connect;
+document.getElementById('calib').onclick = startCalibration;
+</script>
+</body>
+</html>
+

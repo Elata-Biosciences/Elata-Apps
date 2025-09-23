@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NeuroPong Assist</title>
+  <style>
+    body{margin:0;background:#0b0f14;color:#e8eef7;font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Ubuntu,Helvetica,Arial,sans-serif}
+    header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #1a2431;background:#0f1620}
+    header h1{margin:0;font-size:16px;color:#cfe9ff}
+    #wrap{display:grid;grid-template-columns:1.2fr 1fr;gap:16px;padding:16px}
+    .card{background:#0f1620;border:1px solid #1a2431;border-radius:12px;padding:12px}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    input,button{background:#0a131e;color:#e8eef7;border:1px solid #243041;border-radius:8px;padding:8px 10px}
+    button{cursor:pointer}
+    canvas{background:#0a0f15;border:1px solid #1a2431;border-radius:8px;width:100%;height:auto}
+    .muted{color:#9bb0c9}
+    input[type=range]{width:160px}
+  </style>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>NeuroPong Assist</h1>
+    <div class="muted">Calm-driven paddle smoothing</div>
+  </header>
+  <div id="wrap">
+    <div class="card">
+      <div class="row" style="margin-bottom:8px">
+        <label>Room</label>
+        <input id="room" value="arena-1" />
+        <label>Name</label>
+        <input id="name" value="NPA" />
+        <button id="join">Join Game</button>
+        <span id="gstat" class="muted"></span>
+      </div>
+      <canvas id="pong" width="720" height="405"></canvas>
+      <div class="muted" style="margin-top:8px">Move the mouse. Higher calm = smoother, steadier paddle.</div>
+    </div>
+    <div class="card">
+      <div class="row" style="margin-bottom:8px">
+        <label>Session</label>
+        <input id="sess" value="subject-123" />
+        <button id="connect">Connect EEG</button>
+        <span id="estat" class="muted"></span>
+      </div>
+      <div class="row" style="margin-bottom:8px">
+        <label>Assist</label>
+        <input id="assist" type="range" min="0" max="1" step="0.05" value="0.6" />
+        <span id="assv" class="muted">0.60</span>
+      </div>
+      <div class="muted" id="elog" style="max-height:260px;overflow:auto;white-space:pre-wrap"></div>
+    </div>
+  </div>
+<script>
+const elog = (...a)=>{ const el=document.getElementById('elog'); el.textContent += a.join(' ')+'\n'; el.scrollTop=el.scrollHeight; };
+const estat = (t)=> document.getElementById('estat').textContent = t||'';
+const gstat = (t)=> document.getElementById('gstat').textContent = t||'';
+
+// Game rendering
+const canvas = document.getElementById('pong'); const ctx = canvas.getContext('2d');
+let state=null; let mySide=null; let roomId='arena-1';
+function draw(){
+  const W=canvas.width, H=canvas.height; ctx.clearRect(0,0,W,H);
+  if(!state){ requestAnimationFrame(draw); return; }
+  const padH = 0.2, padW=10; ctx.fillStyle='#fff';
+  ctx.fillRect(20, (state.paddles.left - padH/2)*H, padW, padH*H);
+  ctx.fillRect(W-20-padW, (state.paddles.right - padH/2)*H, padW, padH*H);
+  ctx.beginPath(); ctx.arc(state.ball.x*W, state.ball.y*H, 6, 0, Math.PI*2); ctx.fill();
+  ctx.font='16px system-ui'; ctx.fillText(state.scores.left, W*0.25, 24); ctx.fillText(state.scores.right, W*0.75, 24);
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+
+// Game sockets
+const game = io('/game',{transports:['websocket']});
+game.on('connect', ()=>gstat('connected'));
+game.on('state', s=>{ state=s; });
+game.on('input', p=>{});
+
+document.getElementById('join').onclick = () => {
+  const name=document.getElementById('name').value||'NPA';
+  roomId=document.getElementById('room').value||'arena-1';
+  game.emit('join', { roomId, name }, (ack)=>{
+    if(!ack?.ok){ gstat('join failed'); return; }
+    mySide=ack.side; gstat(`joined as ${ack.role}${ack.side?' ('+ack.side+')':''}`);
+  });
+};
+
+// EEG calm estimator: inverse RMS on chunk, EMA smoothed
+let eeg=null; let calm=0.2; let lastMove=Date.now();
+function calmFromBuf(buf){ const b=buf.buffer?buf:Buffer.from(buf); const f32=new Float32Array(b.buffer,b.byteOffset||0,b.byteLength/4); let s=0; for(let i=0;i<f32.length;i++){ const v=f32[i]; s+=v*v; } const rms=Math.sqrt(s/Math.max(1,f32.length)); const val=1/(1+60*rms); calm=0.9*calm + 0.1*Math.max(0.01, Math.min(1,val)); }
+function connectEEG(){ try{ eeg=io('/eeg',{transports:['websocket']}); }catch(e){ estat('socket.io missing'); return; } const sess=document.getElementById('sess').value||'subject-123'; eeg.on('connect',()=>{ estat('connected'); eeg.emit('observe', sess, ()=>{}); }); eeg.on('connect_error',e=>{ estat('connect error'); elog('connect_error',e.message); }); eeg.on('eeg:chunk', calmFromBuf); }
+document.getElementById('connect').onclick = connectEEG;
+
+// Assist: calmer -> stronger smoothing towards target (reduce jitter)
+let yMouse=0.5, yAssist=0.5; const assistEl=document.getElementById('assist'); const assv=document.getElementById('assv');
+assistEl.oninput = ()=>{ assv.textContent = Number(assistEl.value).toFixed(2); };
+window.addEventListener('mousemove', (e)=>{ yMouse = e.clientY / window.innerHeight; lastMove=Date.now(); });
+
+function loop(){
+  // smoothing factor alpha: base 0.15 + calm * assistStrength * 0.7
+  const assist = Number(assistEl.value);
+  const alpha = Math.min(0.95, 0.15 + 0.7 * calm * assist);
+  yAssist = (1-alpha)*yAssist + alpha*yMouse;
+  if(mySide){ game.emit('input', { roomId, paddleY: Math.max(0, Math.min(1, yAssist)) }); }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
+

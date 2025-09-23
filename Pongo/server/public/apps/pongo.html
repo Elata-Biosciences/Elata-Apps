@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pongo – Multiplayer Pong</title>
+  <style>
+    body{margin:0;background:#0b0f14;color:#e8eef7;font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Ubuntu,Helvetica,Arial,sans-serif}
+    header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #1a2431;background:#0f1620}
+    header h1{margin:0;font-size:16px;color:#cfe9ff}
+    #root{display:flex;gap:16px;padding:16px}
+    .panel{background:#0f1620;border:1px solid #1a2431;border-radius:12px;padding:12px}
+    canvas{background:#0a0f15;border:1px solid #1a2431;border-radius:8px}
+    .muted{color:#9bb0c9}
+    input,button{background:#0a131e;color:#e8eef7;border:1px solid #243041;border-radius:8px;padding:8px 10px}
+    button{cursor:pointer}
+    .row{display:flex;gap:8px;align-items:center}
+  </style>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Pongo – Multiplayer Pong</h1>
+    <div class="muted">Namespace: /game</div>
+  </header>
+  <div id="root">
+    <div class="panel">
+      <div class="row" style="margin-bottom:8px">
+        <label>Room</label>
+        <input id="room" value="arena-1" />
+        <label>Name</label>
+        <input id="name" value="Player" />
+        <button id="join">Join</button>
+        <span id="status" class="muted"></span>
+      </div>
+      <canvas id="pong" width="720" height="405"></canvas>
+      <div class="muted" style="margin-top:8px">Move your mouse vertically to control your paddle.</div>
+    </div>
+    <div class="panel">
+      <div><strong>Log</strong></div>
+      <pre id="log" style="margin:8px 0 0;max-height:360px;overflow:auto"></pre>
+    </div>
+  </div>
+<script>
+const log = (...a)=>{ const el=document.getElementById('log'); el.textContent += a.join(' ')+'\n'; el.scrollTop=el.scrollHeight; };
+const status = (t)=> document.getElementById('status').textContent = t||'';
+
+const game = io('/game', { transports:['websocket'] });
+const canvas = document.getElementById('pong');
+const ctx = canvas.getContext('2d');
+let state=null; let mySide=null; let roomId='arena-1';
+
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  if(!state){ requestAnimationFrame(draw); return; }
+  const W=canvas.width, H=canvas.height;
+  const padH = 0.2, padW = 10;
+  ctx.fillStyle = '#fff';
+  // paddles
+  ctx.fillRect(20, (state.paddles.left - padH/2)*H, padW, padH*H);
+  ctx.fillRect(W-20-padW, (state.paddles.right - padH/2)*H, padW, padH*H);
+  // ball
+  ctx.beginPath(); ctx.arc(state.ball.x*W, state.ball.y*H, 6, 0, Math.PI*2); ctx.fill();
+  // scores
+  ctx.font='16px system-ui'; ctx.fillText(state.scores.left, W*0.25, 24); ctx.fillText(state.scores.right, W*0.75, 24);
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+
+game.on('connect', ()=>{ log('connected', game.id); status('connected') });
+game.on('connect_error', e=>{ log('connect_error', e.message); status('error') });
+game.on('state', s=>{ state=s; });
+game.on('input', p=>{ /* noop - peer echo */ });
+
+document.getElementById('join').onclick = () => {
+  const name=document.getElementById('name').value||'Player';
+  roomId=document.getElementById('room').value||'arena-1';
+  game.emit('join', { roomId, name }, (ack)=>{
+    if(!ack?.ok){ log('join failed', JSON.stringify(ack)); status('join failed'); return; }
+    mySide=ack.side; log('joined', JSON.stringify(ack)); status(`joined as ${ack.role}${ack.side?' ('+ack.side+')':''}`);
+  });
+};
+
+window.addEventListener('mousemove', (e)=>{
+  if(!mySide) return; // spectators do nothing
+  const y = e.clientY / window.innerHeight; // 0..1
+  game.emit('input', { roomId, paddleY: y });
+});
+</script>
+</body>
+</html>
+

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Elata Apps – App Store</title>
+  <style>
+    :root { --bg:#0b0f14; --card:#121821; --fg:#e8eef7; --muted:#9bb0c9; --accent:#61d0ff; }
+    *{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Ubuntu,Helvetica,Arial,sans-serif;background:linear-gradient(120deg,#0b0f14,#0e141d 70%);color:var(--fg)}
+    header{max-width:960px;margin:32px auto 12px;padding:0 16px}
+    h1{margin:0 0 8px;font-weight:700;letter-spacing:.2px}
+    p.lead{margin:0;color:var(--muted)}
+    .grid{max-width:960px;margin:24px auto 64px;padding:0 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px}
+    .card{background:linear-gradient(180deg,var(--card),#0f1620);border:1px solid #1a2431;border-radius:14px;padding:18px;box-shadow:0 10px 24px rgba(0,0,0,.25)}
+    .card h2{margin:0 0 6px;font-size:20px}
+    .card p{margin:0 0 16px;color:var(--muted);min-height:44px}
+    .tags{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 16px}
+    .tag{font-size:12px;padding:4px 8px;border-radius:999px;background:#0d2230;border:1px solid #123c56;color:#9bd8ff}
+    .actions{display:flex;gap:10px;flex-wrap:wrap}
+    a.btn{appearance:none;display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:10px;border:1px solid #1a2431;color:var(--fg);text-decoration:none;background:#0f1a26}
+    a.btn.primary{background:linear-gradient(180deg,#0f3a52,#0d2b40);border-color:#144461;color:#e6f7ff}
+    a.btn:hover{filter:brightness(1.05)}
+    footer{max-width:960px;margin:0 auto 48px;padding:0 16px;color:var(--muted);font-size:14px}
+    .logo{font-weight:800;letter-spacing:.3px;color:#cfe9ff}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">Elata Apps</div>
+    <h1>App Store</h1>
+    <p class="lead">Browse and launch real‑time experiences running on this server.</p>
+  </header>
+
+  <main class="grid">
+    <section class="card">
+      <h2>Pongo – Multiplayer Pong</h2>
+      <p>Two‑player, server‑authoritative Pong over WebSockets. Works in any modern browser.</p>
+      <div class="tags">
+        <span class="tag">Socket.IO</span><span class="tag">Realtime</span><span class="tag">Canvas</span>
+      </div>
+      <div class="actions">
+        <a class="btn primary" href="/apps/pongo.html">Open demo</a>
+        <a class="btn" href="/docs/pong-multiplayer.md" target="_blank" rel="noopener">Docs</a>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>NeuroBloom – Symmetry Garden</h2>
+      <p>Left‑right alpha asymmetry grows two living plants. Balance your mind, grow your garden.</p>
+      <div class="tags">
+        <span class="tag">EEG</span><span class="tag">Alpha</span><span class="tag">Asymmetry</span>
+      </div>
+      <div class="actions">
+        <a class="btn primary" href="/apps/neurobloom/index.html">Open</a>
+        <a class="btn" href="/elata-eeg/scripts/README.md" target="_blank" rel="noopener">EEG bridge guide</a>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>NeuroPong Assist</h2>
+      <p>Use calm to gently assist your paddle in Pong. You play; your mind steadies the aim.</p>
+      <div class="tags">
+        <span class="tag">EEG</span><span class="tag">Calm</span><span class="tag">Game Assist</span>
+      </div>
+      <div class="actions">
+        <a class="btn primary" href="/apps/neurobloom/neuro-pong.html">Open</a>
+        <a class="btn" href="/elata-eeg/scripts/README.md" target="_blank" rel="noopener">EEG bridge guide</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div>Health: <a href="/health" style="color:var(--accent);text-decoration:none">/health</a></div>
+  </footer>
+</body>
+</html>
+
