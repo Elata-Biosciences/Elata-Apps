@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Meditate – Neurofeedback</title>
+  <style>
+    body{margin:0;background:#0b0f14;color:#e8eef7;font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Ubuntu,Helvetica,Arial,sans-serif}
+    header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #1a2431;background:#0f1620}
+    header h1{margin:0;font-size:16px;color:#cfe9ff}
+    main{max-width:960px;margin:16px auto;padding:0 16px;display:grid;grid-template-columns:1fr;gap:16px}
+    .card{background:#0f1620;border:1px solid #1a2431;border-radius:12px;padding:16px}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    input,button{background:#0a131e;color:#e8eef7;border:1px solid #243041;border-radius:8px;padding:8px 10px}
+    button{cursor:pointer}
+    .bar{height:18px;background:#102233;border:1px solid #1a364e;border-radius:9px;overflow:hidden}
+    .fill{height:100%;background:linear-gradient(90deg,#2ee6a6,#26c5ff)}
+    a{color:#61d0ff}
+  </style>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Meditate – Neurofeedback</h1>
+    <div>Optional EEG via /eeg (bridge required)</div>
+  </header>
+  <main>
+    <section class="card">
+      <p>This demo shows a simple calm meter. If you bridge EEG to this server (see EEG bridge guide), it will try to connect to the <code>/eeg</code> namespace and observe your session.</p>
+      <div class="row" style="margin-top:6px">
+        <label>Session ID</label>
+        <input id="sess" value="subject-123" />
+        <button id="connect">Connect</button>
+        <span id="status"></span>
+      </div>
+      <div style="margin-top:12px">
+        <div class="bar"><div id="fill" class="fill" style="width:4%"></div></div>
+        <div id="note" style="margin-top:8px;color:#9bb0c9">Tip: Without EEG, the meter increases when the page is idle and drops with mouse movement.</div>
+      </div>
+      <div style="margin-top:10px">
+        <a href="/elata-eeg/scripts/README.md" target="_blank" rel="noopener">EEG bridge guide</a>
+      </div>
+    </section>
+  </main>
+<script>
+// Idle-based fallback: increase calm when idle, decrease on movement
+let calm = 0.05; let lastMove = Date.now();
+function tickFallback(){
+  const idle = (Date.now()-lastMove)/1000; // seconds since last move
+  calm += (idle>1? 0.01: -0.02); // increase if idle, else drop
+  calm = Math.max(0.01, Math.min(1, calm));
+  document.getElementById('fill').style.width = (calm*100).toFixed(1)+'%';
+  requestAnimationFrame(tickFallback);
+}
+window.addEventListener('mousemove',()=>{ lastMove = Date.now(); });
+requestAnimationFrame(tickFallback);
+
+// Optional EEG (if /eeg exists). This server may not expose /eeg; we handle errors gracefully.
+let eeg=null; let observed=false;
+function status(t){ document.getElementById('status').textContent = t||''; }
+function note(t){ document.getElementById('note').textContent = t; }
+
+function tryConnect(){
+  const sess = document.getElementById('sess').value || 'subject-123';
+  try{ eeg = io('/eeg', { transports:['websocket'] }); } catch(e){ status('socket.io not available'); return; }
+  eeg.on('connect', ()=>{ status('connected to /eeg'); eeg.emit('observe', sess, (ack)=>{ observed = !!(ack&&ack.ok); }); });
+  eeg.on('connect_error', ()=>{ status('no /eeg on server (fallback mode)'); });
+  eeg.on('eeg:chunk', (buf)=>{
+    // Simple energy feature: RMS over chunk -> map to calm inverse
+    const b = buf.buffer ? buf : Buffer.from(buf);
+    const f32 = new Float32Array(b.buffer, b.byteOffset||0, b.byteLength/4);
+    let s=0; for(let i=0;i<f32.length;i++){ const v=f32[i]; s+=v*v; }
+    const rms = Math.sqrt(s/Math.max(1,f32.length));
+    const val = 1 / (1 + 60*rms); // arbitrary mapping
+    calm = 0.9*calm + 0.1*Math.max(0.01, Math.min(1, val));
+  });
+}
+
+document.getElementById('connect').onclick = tryConnect;
+</script>
+</body>
+</html>
+
