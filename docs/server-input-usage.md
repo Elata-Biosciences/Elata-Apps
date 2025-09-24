@@ -1,0 +1,76 @@
+# Server Input Usage (Quick Guide)
+
+This guide shows how to connect to the `/game` namespace and control a paddle using either absolute positions or keyboard-friendly directional inputs. See also: `docs/pong-input-standard.md`.
+
+## Connect and join a room
+
+Browser (CDN):
+```html
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+  const BASE = 'http://localhost:3000'; // or your Render URL
+  const ROOM = 'arena-1';
+  const game = io(BASE + '/game', { transports: ['websocket'] });
+  game.on('connect', () => {
+    game.emit('join', { roomId: ROOM, name: 'Player' }, (ack) => console.log('joined:', ack));
+  });
+</script>
+```
+
+Node:
+```js
+const { io } = require('socket.io-client');
+const BASE = 'http://localhost:3000';
+const game = io(BASE + '/game', { transports: ['websocket'] });
+game.on('connect', () => game.emit('join', { roomId: 'arena-1', name: 'Bot' }, console.log));
+```
+
+## Send input
+
+Two message shapes are supported. Use what fits your input device.
+
+1) Absolute position (normalized)
+```js
+// 0 = top, 1 = bottom
+const y = 0.85;
+game.emit('input', { roomId: 'arena-1', paddleY: y });
+```
+
+2) Directional step (keyboard/controller)
+```js
+// Up/down movement by step amount (default step is 0.04 if omitted)
+game.emit('input', { roomId: 'arena-1', dir: 'up', step: 0.05 });
+game.emit('input', { roomId: 'arena-1', dir: 'down' });
+```
+
+## Observe state and peer input
+
+```js
+game.on('state', (s) => {
+  // s.paddles.left/right in [0,1]
+  // s.ball.x/y in [0,1]
+});
+
+game.on('input', (msg) => {
+  // peer input relay: { side, paddleY, dir? }
+});
+```
+
+## Demo keyboard hook (browser)
+
+```js
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowUp' || e.key === 'w') game.emit('input', { roomId: 'arena-1', dir: 'up' });
+  if (e.key === 'ArrowDown' || e.key === 's') game.emit('input', { roomId: 'arena-1', dir: 'down' });
+});
+```
+
+## Test the behavior
+
+A Jest test `Pongo/server/__tests__/input_control.spec.js` connects clients, sends both absolute and directional inputs, and asserts the authoritative server `state` reflects paddle movement accordingly. Run:
+
+```bash
+cd Pongo/server
+npm test
+```
+

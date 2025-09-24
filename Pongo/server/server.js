@@ -169,9 +169,24 @@ game.on('connection', (socket) => {
 
   socket.on('input', (payload = {}) => {
     if (!roomId || !side) return;
+    const room = rooms.get(roomId);
+
+    // Support either absolute paddleY (0..1) OR discrete directional inputs
+    if (typeof payload.dir === 'string') {
+      const step = Number.isFinite(payload.step) ? Number(payload.step) : 0.04; // default step per input
+      const d = payload.dir.toLowerCase();
+      let dy = 0;
+      if (d === 'up') dy = -step;
+      else if (d === 'down') dy = step;
+      // left/right reserved for future horizontal games; ignored for Pong
+      const yNew = Math.max(0, Math.min(1, room.paddles[side] + dy));
+      room.paddles[side] = yNew;
+      socket.to(roomId).emit('input', { side, paddleY: yNew, dir: d });
+      return;
+    }
+
     const y = Number(payload.paddleY);
     if (!Number.isFinite(y)) return;
-    const room = rooms.get(roomId);
     room.paddles[side] = Math.max(0, Math.min(1, y));
     // Relay to others (so client can animate immediately)
     socket.to(roomId).emit('input', { side, paddleY: room.paddles[side] });

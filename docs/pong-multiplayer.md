@@ -84,6 +84,32 @@ Server → Client (relay so peers update instantly):
 
 ---
 
+---
+
+## 3b) Directional inputs (keyboard-friendly)
+
+You can also send discrete directional inputs instead of an absolute position. The server will step the paddle by a small amount per input.
+
+Client → Server:
+- `input` payload: `{ roomId: string, dir: 'up'|'down'|'left'|'right', step?: number }`
+  - `step` is optional; defaults to `0.04` (in normalized units)
+
+Example (keyboard in browser):
+
+```js
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowUp' || e.key === 'w') {
+    game.emit('input', { roomId: ROOM, dir: 'up' });
+  } else if (e.key === 'ArrowDown' || e.key === 's') {
+    game.emit('input', { roomId: ROOM, dir: 'down' });
+  }
+});
+```
+
+Server → Client (relay):
+- `input` → `{ side: 'left'|'right', paddleY: number, dir?: string }`
+
+
 ## 4) Receive server state
 
 The server runs a 30 Hz physics loop and broadcasts `state` to everyone in the room.
@@ -163,11 +189,12 @@ CORS: The server allows `*` by default via `CORS_ORIGIN`. If you need to lock it
 
 Client → Server
 - `join`: `{ roomId, name? }` → ack `{ ok, playerId, side|null, role }`
-- `input`: `{ roomId, paddleY }`
+- `input` (absolute): `{ roomId, paddleY }`
+- `input` (directional): `{ roomId, dir: 'up'|'down'|'left'|'right', step?: number }`
 
 Server → Client
 - `state`: authoritative game state (30 Hz)
-- `input`: relayed peer input `{ side, paddleY }`
+- `input`: relayed peer input `{ side, paddleY, dir? }`
 - `player:join`: `{ playerId, side, name }`
 - `player:leave`: `{ playerId, side }`
 

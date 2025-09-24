@@ -1,0 +1,5 @@
+#!/bin/bash
+
+cd Pongo/server
+npm install
+npm start
