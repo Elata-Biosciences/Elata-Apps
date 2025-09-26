@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pongo Game</title>
-    <link rel="stylesheet" href="../../../dist/styles.css">
-    <link rel="icon" type="image/svg+xml" href="../../../favicon.svg">
+    <link rel="stylesheet" href="/assets/pongo/dist/styles.css">
+    <link rel="icon" type="image/svg+xml" href="/assets/pongo/favicon.svg">
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <style>
         body {
@@ -114,7 +114,7 @@
             if (toneLoadPromise) return toneLoadPromise;
             toneLoadPromise = new Promise((resolve, reject) => {
                 const s = document.createElement('script');
-                s.src = '../../../vendor/tone/Tone.min.js';
+                s.src = '/assets/pongo/vendor/tone/Tone.min.js';
                 s.async = true;
                 s.onload = () => resolve();
                 s.onerror = (e) => reject(new Error('Failed to load Tone.js'));

@@ -1,0 +1,11 @@
+{
+  "name": "elata-apps",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start": "npm start --prefix server",
+    "dev": "npm run dev --prefix server",
+    "test": "npm test --prefix server"
+  }
+}
+

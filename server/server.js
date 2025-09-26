@@ -11,8 +11,18 @@ const ORIGIN = process.env.CORS_ORIGIN || '*';
 const app = express();
 app.use(cors({ origin: ORIGIN }));
 app.get('/health', (req, res) => res.send('ok'));
-// Serve static landing + demos
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve static landing + demos from top-level public/
+app.use(express.static(path.join(__dirname, '..', 'public')));
+// Ensure /apps routes are served from top-level public/apps
+app.use('/apps', express.static(path.join(__dirname, '..', 'public', 'apps')));
+// Expose repo docs as static under /docs for on-site viewing
+app.use('/docs', express.static(path.join(__dirname, '..', 'docs')));
+
+// Expose Pongo assets (built CSS, vendor libs, favicon) without copying
+app.use('/assets/pongo/dist', express.static(path.join(__dirname, '..', 'Pongo', 'dist')));
+app.use('/assets/pongo/vendor', express.static(path.join(__dirname, '..', 'Pongo', 'vendor')));
+app.get('/assets/pongo/favicon.svg', (_req, res) => res.sendFile(path.join(__dirname, '..', 'Pongo', 'favicon.svg')));
+
 
 const server = http.createServer(app);
 const io = new Server(server, {

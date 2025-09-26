@@ -1,5 +1,50 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-cd Pongo/server
-npm install
-npm start
+# Install dependencies for Pongo (if needed), build Tailwind CSS in the background,
+# then start the main Node server located in ./server
+
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+echo "Starting project from $ROOT_DIR"
+
+# Ensure we're in the project root
+cd "$ROOT_DIR"
+
+if [ -d "Pongo" ]; then
+	if [ -f "Pongo/package.json" ]; then
+		echo "Installing Pongo devDependencies..."
+		(cd Pongo && npm install) || echo "npm install for Pongo failed"
+
+		echo "Starting Tailwind CSS build in background (Pongo)..."
+		# run CSS build in background so server can start; redirect logs to a file
+		(cd Pongo && npm run build:css > ../pongo-build.log 2>&1 &)
+	else
+		echo "Warning: Pongo/package.json not found — skipping Pongo npm install/build"
+	fi
+fi
+
+if [ -d "server" ]; then
+	if [ -f "server/package.json" ]; then
+		echo "Installing server dependencies..."
+		(cd server && npm install) || echo "npm install for server failed"
+
+		# Watch mode for local development: ./run dev
+		if [ "${1:-}" = "dev" ]; then
+			echo "Starting main server in watch mode (node --watch)..."
+			# Use exec so PID 1 is the node process when run in containers
+			exec bash -lc "cd server && npm run dev"
+		fi
+
+		echo "Starting main server..."
+		# Use exec so PID 1 is the node process when run in containers
+		exec bash -lc "cd server && npm start"
+	else
+		echo "Error: server/package.json not found — cannot start main server"
+		exit 1
+	fi
+else
+	echo "Error: server directory not found"
+	exit 1
+fi
