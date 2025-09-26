@@ -1,50 +1,136 @@
 #!/usr/bin/env bash
-
-# Install dependencies for Pongo (if needed), build Tailwind CSS in the background,
-# then start the main Node server located in ./server
+#
+# Unified project runner.
+# Provides commands for development, testing, building, and deployment.
+#
+# Commands:
+#   start    Start the server (builds CSS once).
+#   dev      Start the server with auto-reload and watch for CSS changes.
+#   test     Run server tests.
+#   build    Build front-end assets.
+#   deploy   Show deployment commands.
+#   restart  Kill the process on port 3000 and start again.
+#   help     Show this help message.
 
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
-
-echo "Starting project from $ROOT_DIR"
-
-# Ensure we're in the project root
 cd "$ROOT_DIR"
 
-if [ -d "Pongo" ]; then
-	if [ -f "Pongo/package.json" ]; then
-		echo "Installing Pongo devDependencies..."
-		(cd Pongo && npm install) || echo "npm install for Pongo failed"
+ACTION="${1:-start}"
 
-		echo "Starting Tailwind CSS build in background (Pongo)..."
-		# run CSS build in background so server can start; redirect logs to a file
-		(cd Pongo && npm run build:css > ../pongo-build.log 2>&1 &)
-	else
-		echo "Warning: Pongo/package.json not found — skipping Pongo npm install/build"
-	fi
-fi
+# --- Helper Functions ---
 
-if [ -d "server" ]; then
-	if [ -f "server/package.json" ]; then
-		echo "Installing server dependencies..."
-		(cd server && npm install) || echo "npm install for server failed"
+usage() {
+  echo "Usage: ./run [command]"
+  echo
+  echo "Commands:"
+  echo "  start    Start the server (builds CSS once)."
+  echo "  dev      Start server with auto-reload and watch for CSS changes."
+  echo "  test     Run server tests."
+  echo "  build    Build front-end assets."
+  echo "  deploy   Show deployment commands."
+  echo "  restart  Kill the process on port 3000 and start again."
+  echo "  help     Show this help message."
+}
 
-		# Watch mode for local development: ./run dev
-		if [ "${1:-}" = "dev" ]; then
-			echo "Starting main server in watch mode (node --watch)..."
-			# Use exec so PID 1 is the node process when run in containers
-			exec bash -lc "cd server && npm run dev"
-		fi
+ensure_deps() {
+  local dir="$1"
+  if [ -f "$dir/package.json" ]; then
+    echo "Installing dependencies for $dir..."
+    (cd "$dir" && npm install)
+  else
+    echo "Error: $dir/package.json not found." >&2
+    exit 1
+  fi
+}
 
-		echo "Starting main server..."
-		# Use exec so PID 1 is the node process when run in containers
-		exec bash -lc "cd server && npm start"
-	else
-		echo "Error: server/package.json not found — cannot start main server"
-		exit 1
-	fi
-else
-	echo "Error: server directory not found"
-	exit 1
-fi
+build_pongo_css_once() {
+  if [ -f "Pongo/package.json" ]; then
+    echo "Building Pongo Tailwind CSS..."
+    (cd Pongo && npm run build:css:once)
+  fi
+}
+
+watch_pongo_css_bg() {
+  if [ -f "Pongo/package.json" ]; then
+    echo "Starting Tailwind CSS watch in background..."
+    (cd Pongo && npm run build:css > ../pongo-build.log 2>&1 &)
+    echo "CSS watch process started. Log: pongo-build.log"
+  fi
+}
+
+kill_on_port() {
+  local port="$1"
+  echo "Checking for process on port $port..."
+  if lsof -ti:"$port" > /dev/null; then
+    echo "Process found. Attempting to kill..."
+    lsof -ti:"$port" | xargs kill -9
+    echo "Process on port $port killed."
+  else
+    echo "No process found on port $port."
+  fi
+}
+
+# --- Command Logic ---
+
+case "$ACTION" in
+  help|-h|--help)
+    usage
+    ;;
+
+  test)
+    ensure_deps "server"
+    echo "Running server tests..."
+    (cd server && npm test)
+    ;;
+
+  build)
+    ensure_deps "Pongo"
+    build_pongo_css_once
+    echo "Build complete."
+    ;;
+
+  deploy)
+    echo "Build assets first by running: ./run build"
+    echo
+    echo "DigitalOcean App Platform Commands:"
+    echo "  Build: npm ci --prefix server && npm ci --prefix Pongo && npm run build:css:once --prefix Pongo"
+    echo "  Run:   npm start --prefix server"
+    ;;
+
+  dev)
+    ensure_deps "Pongo"
+    ensure_deps "server"
+    watch_pongo_css_bg
+    echo "Starting main server in watch mode..."
+    exec bash -lc "cd server && npm run dev"
+    ;;
+
+  restart)
+    kill_on_port 3000
+    ensure_deps "Pongo"
+    ensure_deps "server"
+    build_pongo_css_once
+    echo "Starting main server..."
+    exec bash -lc "cd server && npm start"
+    ;;
+
+  start)
+    if lsof -ti:3000 > /dev/null; then
+      echo "Server is already running on port 3000. Use './run restart' to force it."
+      exit 0
+    fi
+    ensure_deps "Pongo"
+    ensure_deps "server"
+    build_pongo_css_once
+    echo "Starting main server..."
+    exec bash -lc "cd server && npm start"
+    ;;
+
+  *)
+    echo "Unknown command: $ACTION"
+    usage
+    exit 1
+    ;;
+esac

@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="/assets/pongo/dist/styles.css">
     <link rel="icon" type="image/svg+xml" href="/assets/pongo/favicon.svg">
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <script src="/socket.io/socket.io.js"></script>
+
     <style>
         body {
             font-family: 'Press Start 2P', cursive;
@@ -56,6 +58,18 @@
     </style>
 </head>
 <body class="flex flex-col items-center justify-center min-h-screen p-4">
+    <script>
+      // Parse clean URL: /:app/:roomId → expose for multiplayer clients
+      (function(){
+        try {
+          const parts = (location.pathname || '/').split('/').filter(Boolean);
+          window.APP_SLUG = parts[0] || 'pongo';
+          window.ROOM_ID = parts[1] || 'default';
+          console.log('App/Room:', window.APP_SLUG, window.ROOM_ID);
+        } catch {}
+      })();
+    </script>
+
 
     <h1 class="text-5xl mb-4 title">PONG</h1>
 

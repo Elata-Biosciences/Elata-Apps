@@ -4,6 +4,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 
 const PORT = process.env.PORT || 3000;
 const ORIGIN = process.env.CORS_ORIGIN || '*';
@@ -23,6 +24,20 @@ app.use('/assets/pongo/dist', express.static(path.join(__dirname, '..', 'Pongo',
 app.use('/assets/pongo/vendor', express.static(path.join(__dirname, '..', 'Pongo', 'vendor')));
 app.get('/assets/pongo/favicon.svg', (_req, res) => res.sendFile(path.join(__dirname, '..', 'Pongo', 'favicon.svg')));
 
+// Clean URLs for app rooms: /:app/:roomId -> serve the app's HTML
+app.get('/:app/:roomId', (req, res, next) => {
+  const appSlug = String(req.params.app || '').toLowerCase();
+  const publicDir = path.join(__dirname, '..', 'public', 'apps');
+  const candidates = [
+    path.join(publicDir, `${appSlug}.html`),
+    path.join(publicDir, appSlug, 'index.html'),
+  ];
+  const target = candidates.find(p => fs.existsSync(p));
+  if (!target) return next();
+  res.sendFile(target);
+});
+
+
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -40,6 +55,23 @@ io.on('connection', (socket) => {
     console.log('[root] disconnected', socket.id, reason);
   });
 });
+
+// =========================
+// Generic control relay namespace
+// =========================
+const relay = io.of('/relay');
+relay.on('connection', (socket) => {
+  let roomId = null;
+  socket.on('join', (p = {}, ack) => {
+    roomId = String(p.roomId || 'default'); socket.join(roomId);
+    ack && ack({ ok: true, roomId, userId: socket.id });
+    socket.to(roomId).emit('user:join', { userId: socket.id, name: p.name || 'anon' });
+  });
+  socket.on('input', (msg = {}) => { if (!roomId) return; relay.to(roomId).emit('input', { from: socket.id, ...msg }); });
+  socket.on('state', (msg = {}) => { if (!roomId) return; socket.to(roomId).emit('state', msg); });
+  socket.on('disconnect', () => { if (roomId) socket.to(roomId).emit('user:leave', { userId: socket.id }); });
+});
+
 
 // =========================
 // Multiplayer Pong namespace
