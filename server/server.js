@@ -24,6 +24,36 @@ app.use('/assets/pongo/dist', express.static(path.join(__dirname, '..', 'Pongo',
 app.use('/assets/pongo/vendor', express.static(path.join(__dirname, '..', 'Pongo', 'vendor')));
 app.get('/assets/pongo/favicon.svg', (_req, res) => res.sendFile(path.join(__dirname, '..', 'Pongo', 'favicon.svg')));
 
+// --- File logging to /logs (auto-enabled unless NO_FILE_LOG=1) ---
+(function setupFileLogging(){
+  try {
+    if (process.env.NO_FILE_LOG === '1') return;
+    const logDir = path.join(__dirname, '..', 'logs');
+    fs.mkdirSync(logDir, { recursive: true });
+    const d = new Date();
+    const pad = (n)=> String(n).padStart(2,'0');
+    const fname = `server-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.log`;
+    const fpath = path.join(logDir, fname);
+    const stream = fs.createWriteStream(fpath, { flags: 'a' });
+    const origLog = console.log.bind(console);
+    const origErr = console.error.bind(console);
+    const stamp = ()=>{
+      try{ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(new Date().getHours())}:${pad(new Date().getMinutes())}:${pad(new Date().getSeconds())}`; }catch{ return new Date().toISOString(); }
+    };
+    const write = (level, args)=>{
+      const msg = args.map(a=>{
+        try { return typeof a === 'string' ? a : JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      try { stream.write(`${stamp()} [${level}] ${msg}\n`); } catch {}
+    };
+    console.log = (...args)=>{ write('INFO', args); origLog(...args); };
+    console.error = (...args)=>{ write('ERROR', args); origErr(...args); };
+    origLog(`[log] file logging enabled: ${fpath}`);
+  } catch (e) {
+    // If file logging fails, continue with console only
+  }
+})();
+
 // Expose server gameplay constants to clients (HTTP)
 app.get('/game/config', (_req, res) => {
   res.json({
@@ -221,6 +251,26 @@ function tick(room) {
 
       // Left paddle collision
       if (room.ball.vx < 0 && room.ball.x <= PADDLE_WIDTH + BALL_RADIUS) {
+
+  // Periodic debug snapshot (once per ~1s)
+  if (DEBUG_GAME) {
+    if (!room.__lastDebugLogAt) room.__lastDebugLogAt = 0;
+    if ((now - room.__lastDebugLogAt) >= 1000) {
+      try {
+        console.log('[game] tick', room.id, JSON.stringify({
+          state: room.roundState,
+          timer: Number(room.roundTimer || 0).toFixed(2),
+          ball: { x: Number(room.ball.x).toFixed(3), y: Number(room.ball.y).toFixed(3), vx: Number(room.ball.vx).toFixed(3), vy: Number(room.ball.vy).toFixed(3) },
+          paddles: { left: Number(room.paddles.left.y).toFixed(3), right: Number(room.paddles.right.y).toFixed(3) },
+          scores: room.scores,
+          players: room.players.size,
+          sides: room.sides,
+        }));
+      } catch {}
+      room.__lastDebugLogAt = now;
+    }
+  }
+
         if (Math.abs(room.ball.y - room.paddles.left.y) <= padH / 2) {
           room.ball.x = PADDLE_WIDTH + BALL_RADIUS;
           // Increase horizontal speed slightly on paddle hit

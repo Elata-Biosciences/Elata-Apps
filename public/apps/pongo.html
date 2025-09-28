@@ -9,6 +9,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <script src="/socket.io/socket.io.js"></script>
 
+    <script src="/assets/pongo/dist/pongo-core.js"></script>
+
     <style>
         body {
             font-family: 'Press Start 2P', cursive;
@@ -16,7 +18,7 @@
             background: -webkit-linear-gradient(to right, #24243e, #302b63, #0f0c29);
             background: linear-gradient(to right, #24243e, #302b63, #0f0c29);
             color: #ffffff;
-            overflow: hidden; /* Prevent scrollbars */
+            overflow: hidden; /* Prevent scrolling */
         }
         canvas {
             background-color: rgba(0, 0, 0, 0.5);
@@ -57,7 +59,7 @@
         }
     </style>
 </head>
-<body class="flex flex-col items-center justify-center min-h-screen p-4">
+<body class="flex flex-col items-center justify-start sm:justify-center min-h-screen p-2 sm:p-4">
     <script>
       // Parse clean URL: /:app/:roomId → expose for multiplayer clients
       (function(){
@@ -86,205 +88,230 @@
         const isLocalDev = ['localhost', '127.0.0.1'].includes(location.hostname);
         window.DEBUG_MP = urlDebug || (localStorage.getItem('DEBUG_MP') === '1') || isLocalDev;
         if (window.DEBUG_MP) console.log('[mp] debug enabled');
-        // Keep in sync with server constants for client prediction
-        let TICK_RATE = 30; // Hz (will be replaced by /game/config)
-        let PADDLE_SPEED = 0.5; // units/sec
-        let DT = 1 / TICK_RATE;
-        window.PADDLE_HEIGHT_NORM = 0.2;
-        // Load server config to avoid drift
-        try {
-          fetch('/game/config').then(r=>r.json()).then(cfg=>{
-            if (cfg && typeof cfg.TICK_RATE==='number') TICK_RATE = cfg.TICK_RATE;
-            if (cfg && typeof cfg.PADDLE_SPEED==='number') PADDLE_SPEED = cfg.PADDLE_SPEED;
-            if (cfg && typeof cfg.PADDLE_HEIGHT==='number') window.PADDLE_HEIGHT_NORM = cfg.PADDLE_HEIGHT;
-            DT = 1 / TICK_RATE;
-            if (window.DEBUG_MP) console.log('[mp] config', {TICK_RATE, PADDLE_SPEED, PADDLE_HEIGHT_NORM: window.PADDLE_HEIGHT_NORM});
-          }).catch((e)=>{ if (window.DEBUG_MP) console.warn('[mp] config fetch failed', e); });
-        } catch (e) { if (window.DEBUG_MP) console.warn('[mp] config error', e); }
-        let sock = null, side = null;
-        let upTimer=null, downTimer=null;
-        let mySeq = 0;
-        const pending = []; // {seq, direction}
-        function sendMove(direction){
-          if (!sock) return;
-          const seq = ++mySeq;
-          sock.emit('input', { action:'move', direction, seq });
-          pending.push({ seq, direction });
-        }
-        function startRepeat(dir){
-          if ((dir==='up' && upTimer) || (dir==='down' && downTimer)) return;
-          const send = ()=> sendMove(dir);
-          if (dir==='up') { upTimer = setInterval(send, 60); send(); }
-          if (dir==='down') { downTimer = setInterval(send, 60); send(); }
-        }
-        function stopRepeat(dir){
-          if (dir==='up' && upTimer){ clearInterval(upTimer); upTimer=null; }
-          if (dir==='down' && downTimer){ clearInterval(downTimer); downTimer=null; }
-        }
-        function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
-        function normToPxY(n){
-          const h = (window.canvas && canvas.height) || window.innerHeight;
-          return clamp(n,0,1) * (h - (window.PADDLE_HEIGHT||100));
-        }
-        function normToPxX(n){
-          const w = (window.canvas && canvas.width) || window.innerWidth;
-          return clamp(n,0,1) * w;
-        }
-        function applyPrediction(baseY){
-          let y = baseY;
-          for (const inp of pending){
-            const dy = inp.direction === 'up' ? -PADDLE_SPEED * DT : PADDLE_SPEED * DT;
-            y = clamp(y + dy, 0 + (window.PADDLE_HEIGHT_NORM||0.2)/2, 1 - (window.PADDLE_HEIGHT_NORM||0.2)/2);
-          }
-          return y;
-        }
-        // Snapshot buffer for interpolation
-        window.STATE_BUFFER = window.STATE_BUFFER || [];
-        window.RENDER_BUFFER_MS = window.RENDER_BUFFER_MS || 100;
-        let __lastRoundState = null;
-        let __lastAckSeqLog = -1, __lastPendingLog = -1;
-        function applyState(s){
-          try{
-            // Reconciliation: drop acked inputs using server's lastSeq
-            if (side && s.lastSeq){
-              const ackSeq = s.lastSeq[side];
-              for (let i = pending.length - 1; i >= 0; i--) {
-                if (pending[i].seq <= ackSeq) pending.splice(i,1);
-              }
-              if (window.DEBUG_MP) {
-                const pLen = pending.length;
-                const shouldLog = (ackSeq > 0 && ackSeq !== __lastAckSeqLog) || (pLen > 0 && pLen !== __lastPendingLog);
-                if (shouldLog) {
-                  console.log('[mp] state ack', { side, ackSeq, pending: pLen });
-                  __lastAckSeqLog = ackSeq;
-                  __lastPendingLog = pLen;
-                }
-              }
-            }
-            const snap = {
-              _at: performance.now(), // local receipt time
-              t: s.t,
-              paddles: { left: Number(s.paddles.left)||0.5, right: Number(s.paddles.right)||0.5 },
-              ball: { x: Number(s.ball.x)||0.5, y: Number(s.ball.y)||0.5 },
-              scores: s.scores || { left: 0, right: 0 },
-              // include server round state so client can detect whether the server has started
-              roundState: s.roundState || 'waiting',
-              roundTimer: Number(s.roundTimer) || 0
-            };
-            const buf = window.STATE_BUFFER;
-            buf.push(snap);
-            if (buf.length > 60) buf.splice(0, buf.length - 60);
-            if (window.DEBUG_MP && __lastRoundState !== snap.roundState) {
-              console.log('[mp] roundState', __lastRoundState, '->', snap.roundState, 'ball', snap.ball, 'paddles', snap.paddles);
-              __lastRoundState = snap.roundState;
-            }
-            // Multiplayer waiting UI
-            if (window.USE_MULTIPLAYER) {
-              const box = document.getElementById('messageBox');
-              const text = document.getElementById('messageText');
-              const btn = document.getElementById('restartButton');
-              if (snap.roundState === 'waiting') {
-                if (box && text && btn) { box.classList.remove('hidden'); text.textContent = `Waiting for another player to join${window.ROOM_ID?` in room “${window.ROOM_ID}”`:''}…`; btn.classList.add('hidden'); }
-              } else {
-                if (box && text && btn) { text.textContent = ''; btn.classList.remove('hidden'); box.classList.add('hidden'); }
-              }
-            }
-            // Update scores immediately
-            if (s.scores && window.updateScores){
-              if (typeof player==='object') player.score = s.scores.left|0;
-              if (typeof computer==='object') computer.score = s.scores.right|0;
-              updateScores();
-            }
-          }catch(e){ if (window.DEBUG_MP) console.warn('[mp] applyState error', e); }
-        }
-        function stepMultiplayer(now){
-          const buf = window.STATE_BUFFER;
-          if (!buf || buf.length === 0) return;
-          const target = (typeof now === 'number' ? now : performance.now()) - window.RENDER_BUFFER_MS;
-          // Find bracketing snapshots
-          let a = buf[0], b = buf[buf.length-1];
-          for (let i=0;i<buf.length-1;i++){
-            if (buf[i]._at <= target && target <= buf[i+1]._at){ a = buf[i]; b = buf[i+1]; break; }
-          }
-          const span = Math.max(1, b._at - a._at);
-          const t = Math.max(0, Math.min(1, (target - a._at)/span));
-          if (window.DEBUG_MP && (Math.random() < 0.02)) {
-            console.log('[mp] interp', { buf: buf.length, target: Math.round(target)%10000, aT: Math.round(a._at)%10000, bT: Math.round(b._at)%10000, t: Number(t.toFixed(2)), aRS: a.roundState, bRS: b.roundState });
-          }
-          const lerp = (x0,x1)=> x0 + (x1-x0)*t;
-          // Base interpolated values from server
-          const leftY = lerp(a.paddles.left, b.paddles.left);
-          const rightY = lerp(a.paddles.right, b.paddles.right);
-          const ballX = lerp(a.ball.x, b.ball.x);
-          const ballY = lerp(a.ball.y, b.ball.y);
-          // Apply client prediction to own paddle
-          let selfY = side==='left' ? leftY : rightY;
-          selfY = side ? applyPrediction(selfY) : selfY;
-          // Write to scene
-          if (side==='left') {
-            if (window.player) player.y = normToPxY(selfY);
-            if (window.computer) computer.y = normToPxY(rightY);
-          } else if (side==='right') {
-            if (window.computer) computer.y = normToPxY(selfY);
-            if (window.player) player.y = normToPxY(leftY);
-          }
-          if (window.ball){ ball.x = normToPxX(ballX); ball.y = normToPxY(ballY) + (window.BALL_RADIUS||10); }
-        }
-        function setupSocket(){
-          if (sock) return;
-          sock = io('/game');
-          sock.on('connect', ()=>{ if (window.DEBUG_MP) console.log('[mp] socket connected', sock.id); });
-          sock.on('disconnect', (r)=>{ if (window.DEBUG_MP) console.log('[mp] socket disconnected', r); });
-          sock.emit('join', { roomId: window.ROOM_ID, name: 'Player' }, (ack)=>{
-            side = ack && ack.side;
-            if (window.DEBUG_MP) console.log('[mp] joined', { room: window.ROOM_ID, side, role: ack && ack.role, maxPlayers: ack && ack.maxPlayers });
-          });
-          sock.on('state', applyState);
-          sock.on('gameState', applyState);
-          // Clear buffer on reconnect
-          sock.on('reconnect', ()=> { if (window.DEBUG_MP) console.log('[mp] reconnect, clearing buffer'); window.STATE_BUFFER = []; });
-        }
-        // Only auto-connect sockets if starting in multiplayer mode via query
-        if (window.USE_MULTIPLAYER) setupSocket();
-        // Hook key events to emit to server (simulation disabled in update())
-        window.addEventListener('keydown', (e)=>{
-          const k = e.key;
-          if (k==='ArrowUp' || k==='w' || k==='W'){ startRepeat('up'); e.preventDefault(); }
-          if (k==='ArrowDown' || k==='s' || k==='S'){ startRepeat('down'); e.preventDefault(); }
-        });
-        window.addEventListener('keyup', (e)=>{
-          const k = e.key;
-          if (k==='ArrowUp' || k==='w' || k==='W') stopRepeat('up');
-          if (k==='ArrowDown' || k==='s' || k==='S') stopRepeat('down');
-        });
       })();
+
+      // Multiplayer logic now in global scope to be accessible
+      let sock = null, side = null;
+      let upTimer=null, downTimer=null;
+      let mySeq = 0;
+      const pending = []; // {seq, direction}
+      let TICK_RATE = 30; // Hz (will be replaced by /game/config)
+      let PADDLE_SPEED = 0.5; // units/sec
+      let DT = 1 / TICK_RATE;
+      window.PADDLE_HEIGHT_NORM = 0.2;
+
+      // Load server config to avoid drift
+      try {
+        fetch('/game/config').then(r=>r.json()).then(cfg=>{
+          if (cfg && typeof cfg.TICK_RATE==='number') TICK_RATE = cfg.TICK_RATE;
+          if (cfg && typeof cfg.PADDLE_SPEED==='number') PADDLE_SPEED = cfg.PADDLE_SPEED;
+          if (cfg && typeof cfg.PADDLE_HEIGHT==='number') window.PADDLE_HEIGHT_NORM = cfg.PADDLE_HEIGHT;
+          DT = 1 / TICK_RATE;
+          if (window.DEBUG_MP) console.log('[mp] config', {TICK_RATE, PADDLE_SPEED, PADDLE_HEIGHT_NORM: window.PADDLE_HEIGHT_NORM});
+        }).catch((e)=>{ if (window.DEBUG_MP) console.warn('[mp] config fetch failed', e); });
+      } catch (e) { if (window.DEBUG_MP) console.warn('[mp] config error', e); }
+
+      function sendMove(direction){
+        if (!sock) return;
+        const seq = ++mySeq;
+        sock.emit('input', { action:'move', direction, seq });
+        pending.push({ seq, direction });
+      }
+      function startRepeat(dir){
+        if ((dir==='up' && upTimer) || (dir==='down' && downTimer)) return;
+        const send = ()=> sendMove(dir);
+        if (dir==='up') { upTimer = setInterval(send, 60); send(); }
+        if (dir==='down') { downTimer = setInterval(send, 60); send(); }
+      }
+      function stopRepeat(dir){
+        if (dir==='up' && upTimer){ clearInterval(upTimer); upTimer=null; }
+        if (dir==='down' && downTimer){ clearInterval(downTimer); downTimer=null; }
+      }
+      function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+      function normToPxY(n){
+        const h = (window.canvas && canvas.height) || window.innerHeight;
+        return clamp(n,0,1) * (h - (window.PADDLE_HEIGHT||100));
+      }
+      function normToPxX(n){
+        const w = (window.canvas && canvas.width) || window.innerWidth;
+        return clamp(n,0,1) * w;
+      }
+      function normToPxYFull(n){
+        const h = (window.canvas && canvas.height) || window.innerHeight;
+        const v = Math.max(0, Math.min(1, n));
+        return v * h;
+      }
+
+      function centerNormToPxTop(n, rectH){
+        const h = (window.canvas && canvas.height) || window.innerHeight;
+        const v = Math.max(0, Math.min(1, n));
+        const center = v * h;
+        const top = center - rectH/2;
+        return Math.max(0, Math.min(h - rectH, top));
+      }
+
+      function applyPrediction(baseY){
+        let y = baseY;
+        for (const inp of pending){
+          const dy = inp.direction === 'up' ? -PADDLE_SPEED * DT : PADDLE_SPEED * DT;
+          y = clamp(y + dy, 0 + (window.PADDLE_HEIGHT_NORM||0.2)/2, 1 - (window.PADDLE_HEIGHT_NORM||0.2)/2);
+        }
+        return y;
+      }
+      // Snapshot buffer for interpolation
+      window.STATE_BUFFER = window.STATE_BUFFER || [];
+      window.RENDER_BUFFER_MS = window.RENDER_BUFFER_MS || 100;
+      let __lastRoundState = null;
+      let __lastAckSeqLog = -1, __lastPendingLog = -1;
+      function applyState(s){
+        try{
+          // Reconciliation: drop acked inputs using server's lastSeq
+          if (side && s.lastSeq){
+            const ackSeq = s.lastSeq[side];
+            for (let i = pending.length - 1; i >= 0; i--) {
+              if (pending[i].seq <= ackSeq) pending.splice(i,1);
+            }
+            if (window.DEBUG_MP) {
+              const pLen = pending.length;
+              const shouldLog = (ackSeq > 0 && ackSeq !== __lastAckSeqLog) || (pLen > 0 && pLen !== __lastPendingLog);
+              if (shouldLog) {
+                console.log('[mp] state ack', { side, ackSeq, pending: pLen });
+                __lastAckSeqLog = ackSeq;
+                __lastPendingLog = pLen;
+              }
+            }
+          }
+          const snap = {
+            _at: performance.now(), // local receipt time
+            t: s.t,
+            paddles: { left: Number(s.paddles.left)||0.5, right: Number(s.paddles.right)||0.5 },
+            ball: { x: Number(s.ball.x)||0.5, y: Number(s.ball.y)||0.5 },
+            scores: s.scores || { left: 0, right: 0 },
+            // include server round state so client can detect whether the server has started
+            roundState: s.roundState || 'waiting',
+            roundTimer: Number(s.roundTimer) || 0
+          };
+          const buf = window.STATE_BUFFER;
+          buf.push(snap);
+          if (buf.length > 60) buf.splice(0, buf.length - 60);
+          if (window.DEBUG_MP && __lastRoundState !== snap.roundState) {
+            console.log('[mp] roundState', __lastRoundState, '->', snap.roundState, 'ball', snap.ball, 'paddles', snap.paddles);
+            __lastRoundState = snap.roundState;
+          }
+          // Multiplayer waiting UI
+          if (window.USE_MULTIPLAYER) {
+            const box = document.getElementById('messageBox');
+            const text = document.getElementById('messageText');
+            const btn = document.getElementById('restartButton');
+            if (snap.roundState === 'waiting') {
+              if (box && text && btn) { box.classList.remove('hidden'); text.textContent = `Waiting for another player to join${window.ROOM_ID?` in room “${window.ROOM_ID}”`:''}…`; btn.classList.add('hidden'); }
+            } else {
+              if (box && text && btn) { text.textContent = ''; btn.classList.remove('hidden'); box.classList.add('hidden'); }
+            }
+          }
+          // Update scores immediately
+          if (s.scores && window.updateScores){
+            if (typeof player==='object') player.score = s.scores.left|0;
+            if (typeof computer==='object') computer.score = s.scores.right|0;
+            updateScores();
+          }
+        }catch(e){ if (window.DEBUG_MP) console.warn('[mp] applyState error', e); }
+      }
+      function stepMultiplayer(now){
+        const buf = window.STATE_BUFFER;
+        if (!buf || buf.length === 0) return;
+        const target = (typeof now === 'number' ? now : performance.now()) - window.RENDER_BUFFER_MS;
+        // Find bracketing snapshots
+        let a = buf[0], b = buf[buf.length-1];
+        for (let i=0;i<buf.length-1;i++){
+          if (buf[i]._at <= target && target <= buf[i+1]._at){ a = buf[i]; b = buf[i+1]; break; }
+        }
+        const span = Math.max(1, b._at - a._at);
+        const t = Math.max(0, Math.min(1, (target - a._at)/span));
+        if (window.DEBUG_MP && (Math.random() < 0.02)) {
+          console.log('[mp] interp', { buf: buf.length, target: Math.round(target)%10000, aT: Math.round(a._at)%10000, bT: Math.round(b._at)%10000, t: Number(t.toFixed(2)), aRS: a.roundState, bRS: b.roundState });
+        }
+        const lerp = (x0,x1)=> x0 + (x1-x0)*t;
+        // Base interpolated values from server
+        const leftY = lerp(a.paddles.left, b.paddles.left);
+        const rightY = lerp(a.paddles.right, b.paddles.right);
+        const ballX = lerp(a.ball.x, b.ball.x);
+        const ballY = lerp(a.ball.y, b.ball.y);
+        // Apply client prediction to own paddle
+        let selfY = side==='left' ? leftY : rightY;
+        selfY = side ? applyPrediction(selfY) : selfY;
+        // Write to scene
+        // Smooth the local paddle to hide reconciliation snaps
+        const localTarget = centerNormToPxTop(selfY, PADDLE_HEIGHT);
+        const otherTargetLeft  = centerNormToPxTop(leftY,  PADDLE_HEIGHT);
+        const otherTargetRight = centerNormToPxTop(rightY, PADDLE_HEIGHT);
+        window.__MP_LAST_TS = (typeof window.__MP_LAST_TS==='number') ? window.__MP_LAST_TS : now;
+        const dtMs = Math.max(0, Math.min(50, (typeof now==='number'? now : performance.now()) - window.__MP_LAST_TS));
+        window.__MP_LAST_TS = (typeof now==='number'? now : performance.now());
+        const SMOOTH_MS = 80;
+        const k = 1 - Math.exp(-dtMs / SMOOTH_MS);
+        if (typeof window.__RENDER_SELF_Y !== 'number') window.__RENDER_SELF_Y = localTarget;
+        window.__RENDER_SELF_Y = window.__RENDER_SELF_Y + (localTarget - window.__RENDER_SELF_Y) * k;
+
+        if (side==='left') {
+          if (window.player)   player.y   = window.__RENDER_SELF_Y;
+          if (window.computer) computer.y = otherTargetRight;
+        } else if (side==='right') {
+          if (window.computer) computer.y = window.__RENDER_SELF_Y;
+          if (window.player)   player.y   = otherTargetLeft;
+        }
+        if (window.ball){ ball.x = normToPxX(ballX); ball.y = normToPxYFull(ballY); }
+      }
+      function setupSocket(){
+        if (sock) return;
+        sock = io('/game');
+        sock.on('connect', ()=>{ if (window.DEBUG_MP) console.log('[mp] socket connected', sock.id); });
+        sock.on('disconnect', (r)=>{ if (window.DEBUG_MP) console.log('[mp] socket disconnected', r); });
+        sock.emit('join', { roomId: window.ROOM_ID, name: 'Player' }, (ack)=>{
+          side = ack && ack.side;
+          if (window.DEBUG_MP) console.log('[mp] joined', { room: window.ROOM_ID, side, role: ack && ack.role, maxPlayers: ack && ack.maxPlayers });
+        });
+        sock.on('state', applyState);
+        sock.on('gameState', applyState);
+        // Clear buffer on reconnect
+        sock.on('reconnect', ()=> { if (window.DEBUG_MP) console.log('[mp] reconnect, clearing buffer'); window.STATE_BUFFER = []; });
+      }
+      // Only auto-connect sockets if starting in multiplayer mode via query
+      if (window.USE_MULTIPLAYER) setupSocket();
+      // Hook key events to emit to server (simulation disabled in update())
+      window.addEventListener('keydown', (e)=>{
+        const k = e.key;
+        if (k==='ArrowUp' || k==='w' || k==='W'){ startRepeat('up'); e.preventDefault(); }
+        if (k==='ArrowDown' || k==='s' || k==='S'){ startRepeat('down'); e.preventDefault(); }
+      });
+      window.addEventListener('keyup', (e)=>{
+        const k = e.key;
+        if (k==='ArrowUp' || k==='w' || k==='W') stopRepeat('up');
+        if (k==='ArrowDown' || k==='s' || k==='S') stopRepeat('down');
+      });
     </script>
 
 
-    <h1 class="text-5xl mb-4 title">PONG</h1>
+    <h1 class="text-3xl sm:text-5xl my-2 sm:mb-4 title">PONG</h1>
 
-    <div class="flex w-full max-w-4xl justify-around mb-4">
+    <div class="flex w-full max-w-4xl justify-around mb-2 sm:mb-4">
         <div class="text-center">
-            <h2 class="text-2xl score-label">PLAYER</h2>
-            <p id="player-score" class="text-6xl score">0</p>
+            <h2 class="text-xl sm:text-2xl score-label">PLAYER</h2>
+            <p id="player-score" class="text-4xl sm:text-6xl score">0</p>
         </div>
         <div class="text-center">
-            <h2 class="text-2xl score-label">COMPUTER</h2>
-            <p id="computer-score" class="text-6xl score">0</p>
+            <h2 class="text-xl sm:text-2xl score-label">COMPUTER</h2>
+            <p id="computer-score" class="text-4xl sm:text-6xl score">0</p>
         </div>
     </div>
 
-    <!-- Speed control -->
-    <div class="w-full max-w-4xl mb-6 text-center">
-        <label for="speedSlider" class="score-label">Ball Speed</label>
-        <div class="mt-2 flex items-center justify-center gap-4">
-            <input id="speedSlider" type="range" min="0.5" max="2.0" step="0.05" value="1.0" style="width:420px;">
-            <span id="speedValue" class="score">1.00x</span>
-        </div>
+    <!-- Button to open speed modal -->
+    <div class="text-center mb-4">
+        <button id="speedButton" class="restart-btn py-2 px-4 rounded-lg text-sm">Ball Speed</button>
     </div>
 
-    <div class="relative">
-        <canvas id="pongCanvas"></canvas>
+    <div class="relative w-full max-w-4xl mt-2">
+        <canvas id="pongCanvas" class="w-full"></canvas>
         <button id="muteButton" class="absolute top-4 right-4 text-white text-3xl focus:outline-none opacity-75 hover:opacity-100 transition-opacity">🔊</button>
     </div>
 
@@ -296,6 +323,8 @@
               <button id="startButton" class="restart-btn py-3 px-6 rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50">Play Online</button>
               <button id="startAIButton" class="restart-btn py-3 px-6 rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50">Play vs AI</button>
             </div>
+        <button id="copyLinkButton" class="restart-btn mt-4 py-3 px-6 rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50">Copy room link</button>
+
         </div>
     </div>
 
@@ -307,6 +336,18 @@
             <button id="restartButton" class="restart-btn py-3 px-6 rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50">
                 Play Again
             </button>
+        </div>
+    </div>
+
+    <!-- Speed Control Modal -->
+    <div id="speedModal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+        <div class="message-box rounded-lg p-8 text-center">
+            <label for="speedSlider" class="score-label text-2xl mb-4 block">Ball Speed</label>
+            <div class="mt-2 flex flex-col items-center justify-center gap-4">
+                <input id="speedSlider" type="range" min="0.5" max="2.0" step="0.05" value="1.0" class="w-full max-w-xs">
+                <span id="speedValue" class="score text-2xl">1.00x</span>
+            </div>
+            <button id="closeSpeedModal" class="restart-btn mt-6 py-2 px-6 rounded-lg">Close</button>
         </div>
     </div>
 
@@ -336,6 +377,9 @@
         const messageText = document.getElementById('messageText');
         const restartButton = document.getElementById('restartButton');
         const muteButton = document.getElementById('muteButton');
+        const speedButton = document.getElementById('speedButton');
+        const speedModal = document.getElementById('speedModal');
+        const closeSpeedModal = document.getElementById('closeSpeedModal');
 
         // --- Game Constants ---
         const PADDLE_WIDTH = 15;
@@ -344,6 +388,9 @@
         const WINNING_SCORE = 5;
         const PADDLE_COLOR = '#00ffff';
         const BALL_COLOR = '#ffffff';
+        const PADDLE_COLOR_SELF = '#ff00ff';
+        const PADDLE_COLOR_OPP  = PADDLE_COLOR;
+
     // Tuning: how fast the ball accelerates after each paddle hit and max speed cap
     const SPEED_INCREMENT = 1.08; // was 1.05
     const MAX_SPEED_MULTIPLIER = 1.35; // was 1.2
@@ -374,14 +421,9 @@ function setupSpeedSlider() {
 }
 
 function applySpeedMultiplierToBall(mult) {
-    // Scale current speed magnitude while preserving direction
-    const currentSpeed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy) || 0;
-    const baseSpeed = (canvas.width * 0.7) * mult;
-    const desiredSpeed = Math.max(baseSpeed, currentSpeed * mult);
-    const angle = Math.atan2(ball.vy, ball.vx);
-    ball.vx = Math.cos(angle) * desiredSpeed;
-    ball.vy = Math.sin(angle) * desiredSpeed;
-    ball.maxSpeed = canvas.width * MAX_SPEED_MULTIPLIER * mult;
+    if (window.PongoCore && window.PongoCore.applySpeedMultiplierToBall) {
+        window.PongoCore.applySpeedMultiplierToBall(ball, canvas.width, mult, MAX_SPEED_MULTIPLIER);
+    }
 }
 
 
@@ -859,34 +901,10 @@ function applySpeedMultiplierToBall(mult) {
 
         // --- Layout helpers ---
         function getCanvasSize() {
-            const aspectRatio = 16 / 9;
-            const isDesktop = window.innerWidth >= 1024;
-            const widthPct = isDesktop ? 0.8 : 0.95; // desktop a bit smaller
-            const maxW = isDesktop ? 1000 : 1200;
-
-            // Start from width constraint
-            let width = Math.min(window.innerWidth * widthPct, maxW);
-            let height = width / aspectRatio;
-
-            // Then constrain by the vertical space available below the header/score
-            const container = canvas.parentElement || document.body;
-            const topOffset = container.getBoundingClientRect().top;
-            const verticalPadding = 16; // a little breathing room
-            const availableH = Math.max(200, window.innerHeight - topOffset - verticalPadding);
-
-            if (height > availableH) {
-                height = availableH;
-                width = height * aspectRatio;
+            if (window.PongoCore && window.PongoCore.getCanvasSize) {
+                return window.PongoCore.getCanvasSize(canvas);
             }
-
-            // Just in case width now exceeds viewport * widthPct after height clamp
-            const maxWidthByViewport = window.innerWidth * widthPct;
-            if (width > maxWidthByViewport) {
-                width = maxWidthByViewport;
-                height = width / aspectRatio;
-            }
-
-            return { width: Math.round(width), height: Math.round(height) };
+            return { width: canvas.width || 800, height: canvas.height || 450 };
         }
 
         // --- Game Objects Initialization ---
@@ -929,54 +947,24 @@ function applySpeedMultiplierToBall(mult) {
 
         // --- Drawing Functions ---
         function drawRect(x, y, w, h, color) {
-            ctx.fillStyle = color;
-            ctx.shadowBlur = 20;
-            ctx.shadowColor = color;
-            ctx.fillRect(x, y, w, h);
-            ctx.shadowBlur = 0;
+            if (window.PongoCore && window.PongoCore.drawRect) return window.PongoCore.drawRect(ctx, x, y, w, h, color);
         }
 
         function drawCircle(x, y, r, color) {
-            ctx.fillStyle = color;
-            ctx.shadowBlur = 20;
-            ctx.shadowColor = color;
-            ctx.beginPath();
-            ctx.arc(x, y, r, 0, Math.PI * 2, false);
-            ctx.closePath();
-            ctx.fill();
-            ctx.shadowBlur = 0;
+            if (window.PongoCore && window.PongoCore.drawCircle) return window.PongoCore.drawCircle(ctx, x, y, r, color);
         }
 
         function drawNet() {
-            for (let i = 0; i < canvas.height; i += 30) {
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-                ctx.fillRect(canvas.width / 2 - 1, i, 2, 15);
-            }
+            if (window.PongoCore && window.PongoCore.drawNet) return window.PongoCore.drawNet(ctx, canvas);
         }
 
         // --- Particle System ---
         function createParticles(x, y, color) {
-            for (let i = 0; i < 15; i++) {
-                particles.push({ x, y, radius: Math.random() * 3 + 1, color, speedX: (Math.random() - 0.5) * 5, speedY: (Math.random() - 0.5) * 5, life: 1 });
-            }
+            if (window.PongoCore && window.PongoCore.createParticles) return window.PongoCore.createParticles(particles, x, y, color);
         }
 
         function updateAndDrawParticles() {
-            for (let i = particles.length - 1; i >= 0; i--) {
-                let p = particles[i];
-                p.x += p.speedX;
-                p.y += p.speedY;
-                p.life -= 0.05;
-
-                if (p.life <= 0) {
-                    particles.splice(i, 1);
-                } else {
-                    ctx.save();
-                    ctx.globalAlpha = p.life;
-                    drawCircle(p.x, p.y, p.radius, p.color);
-                    ctx.restore();
-                }
-            }
+            if (window.PongoCore && window.PongoCore.updateAndDrawParticles) return window.PongoCore.updateAndDrawParticles(particles, ctx);
         }
 
         // --- Game Logic ---
@@ -1117,8 +1105,18 @@ function applySpeedMultiplierToBall(mult) {
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             drawNet();
-            drawRect(player.x, player.y, player.width, player.height, PADDLE_COLOR);
-            drawRect(computer.x, computer.y, computer.width, computer.height, PADDLE_COLOR);
+            // Choose colors: your paddle highlighted
+            let leftColor = PADDLE_COLOR;
+            let rightColor = PADDLE_COLOR;
+            if (window.USE_MULTIPLAYER) {
+                if (typeof side === 'string') {
+                    if (side === 'left') leftColor = PADDLE_COLOR_SELF; else if (side === 'right') rightColor = PADDLE_COLOR_SELF;
+                }
+            } else {
+                leftColor = PADDLE_COLOR_SELF; // AI mode: you are the left paddle
+            }
+            drawRect(player.x, player.y, player.width, player.height, leftColor);
+            drawRect(computer.x, computer.y, computer.width, computer.height, rightColor);
             drawCircle(ball.x, ball.y, ball.radius, BALL_COLOR);
             updateAndDrawParticles();
         }
@@ -1161,6 +1159,21 @@ function applySpeedMultiplierToBall(mult) {
         // Start overlay interactions
         const startOverlay = document.getElementById('startOverlay');
         const startButton = document.getElementById('startButton');
+        const copyLinkButton = document.getElementById('copyLinkButton');
+        if (copyLinkButton) copyLinkButton.addEventListener('click', async () => {
+            const url = window.location.href;
+            if (audioSystem) audioSystem.playButtonClick();
+            try {
+                await navigator.clipboard.writeText(url);
+                const prev = copyLinkButton.textContent;
+                copyLinkButton.textContent = 'Copied!';
+                setTimeout(()=> copyLinkButton.textContent = prev, 1500);
+            } catch (err) {
+                // Fallback if Clipboard API unavailable
+                window.prompt('Copy this link:', url);
+            }
+        });
+
         const startAIButton = document.getElementById('startAIButton');
 
         // Online start uses multiplayer and shows waiting overlay if needed
@@ -1186,6 +1199,7 @@ function applySpeedMultiplierToBall(mult) {
 
 
         function movePlayer(event) {
+            if (window.USE_MULTIPLAYER) return; // ignore local mouse/touch in multiplayer
             let rect = canvas.getBoundingClientRect();
             let clientY = event.touches ? event.touches[0].clientY : event.clientY;
             player.y = clientY - rect.top - player.height / 2;
@@ -1222,27 +1236,31 @@ function applySpeedMultiplierToBall(mult) {
             if (!gameRunning) initGameObjects();
         }
 
-        canvas.addEventListener('mousemove', movePlayer);
-        canvas.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-            movePlayer(e);
-        }, {passive: false});
+        if (!window.USE_MULTIPLAYER) {
+            canvas.addEventListener('mousemove', movePlayer);
+            canvas.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                movePlayer(e);
+            }, {passive: false});
+        }
 
-        // Keyboard listeners (top-level)
-        window.addEventListener('keydown', (e) => {
-            const k = e.key;
-            if (k === 'ArrowUp' || k === 'w' || k === 'W') { keys.up = true; e.preventDefault(); }
-            if (k === 'ArrowDown' || k === 's' || k === 'S') { keys.down = true; e.preventDefault(); }
-            if (k === 'ArrowLeft' || k === 'a' || k === 'A') { keys.left = true; }
-            if (k === 'ArrowRight' || k === 'd' || k === 'D') { keys.right = true; }
-        });
-        window.addEventListener('keyup', (e) => {
-            const k = e.key;
-            if (k === 'ArrowUp' || k === 'w' || k === 'W') keys.up = false;
-            if (k === 'ArrowDown' || k === 's' || k === 'S') keys.down = false;
-            if (k === 'ArrowLeft' || k === 'a' || k === 'A') keys.left = false;
-            if (k === 'ArrowRight' || k === 'd' || k === 'D') keys.right = false;
-        });
+        // Keyboard listeners (top-level) only for local single-player
+        if (!window.USE_MULTIPLAYER) {
+            window.addEventListener('keydown', (e) => {
+                const k = e.key;
+                if (k === 'ArrowUp' || k === 'w' || k === 'W') { keys.up = true; e.preventDefault(); }
+                if (k === 'ArrowDown' || k === 's' || k === 'S') { keys.down = true; e.preventDefault(); }
+                if (k === 'ArrowLeft' || k === 'a' || k === 'A') { keys.left = true; }
+                if (k === 'ArrowRight' || k === 'd' || k === 'D') { keys.right = true; }
+            });
+            window.addEventListener('keyup', (e) => {
+                const k = e.key;
+                if (k === 'ArrowUp' || k === 'w' || k === 'W') keys.up = false;
+                if (k === 'ArrowDown' || k === 's' || k === 'S') keys.down = false;
+                if (k === 'ArrowLeft' || k === 'a' || k === 'A') keys.left = false;
+                if (k === 'ArrowRight' || k === 'd' || k === 'D') keys.right = false;
+            });
+        }
 
 
 
@@ -1272,6 +1290,15 @@ function applySpeedMultiplierToBall(mult) {
             messageBox.classList.add('hidden');
             initGameObjects();
             updateScores();
+        });
+
+        // Speed modal functionality
+        speedButton.addEventListener('click', () => {
+            speedModal.classList.remove('hidden');
+        });
+
+        closeSpeedModal.addEventListener('click', () => {
+            speedModal.classList.add('hidden');
         });
 
         // Preserve state on resize and keep canvas fully on-screen
