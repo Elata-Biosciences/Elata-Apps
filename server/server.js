@@ -24,19 +24,7 @@ app.use('/assets/pongo/dist', express.static(path.join(__dirname, '..', 'Pongo',
 app.use('/assets/pongo/vendor', express.static(path.join(__dirname, '..', 'Pongo', 'vendor')));
 app.get('/assets/pongo/favicon.svg', (_req, res) => res.sendFile(path.join(__dirname, '..', 'Pongo', 'favicon.svg')));
 
-// Clean URLs for app rooms: /:app/:roomId -> serve the app's HTML
-app.get('/:app/:roomId', (req, res, next) => {
-  const appSlug = String(req.params.app || '').toLowerCase();
-  if (appSlug === 'game') return next(); // allow /game/* endpoints to pass through
-  const publicDir = path.join(__dirname, '..', 'public', 'apps');
-  const candidates = [
-    path.join(publicDir, `${appSlug}.html`),
-    path.join(publicDir, appSlug, 'index.html'),
-  ];
-  const target = candidates.find(p => fs.existsSync(p));
-  if (!target) return next();
-  res.sendFile(target);
-// Expose server gameplay constants to clients
+// Expose server gameplay constants to clients (HTTP)
 app.get('/game/config', (_req, res) => {
   res.json({
     TICK_RATE,
@@ -51,7 +39,20 @@ app.get('/game/config', (_req, res) => {
   });
 });
 
+// Clean URLs for app rooms: /:app/:roomId -> serve the app's HTML
+app.get('/:app/:roomId', (req, res, next) => {
+  const appSlug = String(req.params.app || '').toLowerCase();
+  if (appSlug === 'game') return next(); // allow /game/* endpoints to pass through
+  const publicDir = path.join(__dirname, '..', 'public', 'apps');
+  const candidates = [
+    path.join(publicDir, `${appSlug}.html`),
+    path.join(publicDir, appSlug, 'index.html'),
+  ];
+  const target = candidates.find(p => fs.existsSync(p));
+  if (!target) return next();
+  res.sendFile(target);
 });
+
 
 
 
@@ -109,6 +110,9 @@ const INPUTS_PER_SEC = 20; // steady rate
 const INPUT_BURST = 10;    // max burst tokens
 const MAX_INPUT_QUEUE = 8; // per player, per tick
 
+// Debug toggle via env var; default on in development
+const DEBUG_GAME = (process.env.DEBUG_GAME === '1') || (process.env.NODE_ENV === 'development');
+
 // --- Game State ---
 const rooms = new Map(); // roomId -> room state
 
@@ -140,6 +144,7 @@ function createInitialGameState(id) {
 function startLoop(room) {
   if (room.timer) return;
   room.lastTick = Date.now();
+  if (DEBUG_GAME) console.log('[game] startLoop', room.id, 'state=', room.roundState);
   room.timer = setInterval(() => tick(room), 1000 / TICK_RATE);
 }
 
@@ -175,10 +180,13 @@ function tick(room) {
   switch (room.roundState) {
     case 'countdown':
       room.roundTimer -= dt;
+      if (DEBUG_GAME && Math.abs(room.roundTimer - Math.round(room.roundTimer)) < 1e-3) {
+        console.log('[game] countdown', room.id, 't=', room.roundTimer.toFixed(2));
+      }
       if (room.roundTimer <= 0) {
         room.roundState = 'playing';
-        // Serve the ball
         const serveDirection = Math.random() > 0.5 ? 1 : -1;
+        if (DEBUG_GAME) console.log('[game] start PLAYING', room.id, 'serve dir=', serveDirection);
         resetBall(room, serveDirection);
       }
       break;
@@ -271,6 +279,7 @@ function startNewRound(room) {
   room.ball.y = 0.5;
   room.ball.vx = 0;
   room.ball.vy = 0;
+  if (DEBUG_GAME) console.log('[game] startNewRound', room.id, 'countdown', COUNTDOWN_SECONDS);
 }
 
 function resetBall(room, dir) {
@@ -278,6 +287,7 @@ function resetBall(room, dir) {
   room.ball.y = 0.5;
   room.ball.vx = dir * INITIAL_BALL_SPEED;
   room.ball.vy = (Math.random() * 0.4 - 0.2);
+  if (DEBUG_GAME) console.log('[game] resetBall', room.id, 'vx=', room.ball.vx.toFixed(3), 'vy=', room.ball.vy.toFixed(3));
 }
 
 game.on('connection', (socket) => {
@@ -290,6 +300,7 @@ game.on('connection', (socket) => {
       const name = payload.name ? String(payload.name) : 'anon';
       if (!rooms.has(id)) rooms.set(id, createInitialGameState(id));
       const room = rooms.get(id);
+      if (DEBUG_GAME) console.log('[game] join', { room: id, socket: socket.id, players: room.players.size, spectators: room.spectators.size });
 
       // Join socket.io room
       socket.join(id);
@@ -479,10 +490,21 @@ eeg.on('connection', (socket) => {
 });
 
 function start(port = PORT) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    // Attach a one-time error handler so listen errors (EADDRINUSE etc.) are
+    // reported with a timestamp instead of crashing with an uncaught exception.
+    const onError = (err) => {
+      const ts = typeof formatTimestamp === 'function' ? formatTimestamp(new Date()) : new Date().toISOString();
+      console.error(`Realtime server error: ${err && err.message ? err.message : String(err)}`);
+      reject(err);
+    };
+    server.once('error', onError);
+
     server.listen(port, () => {
+      server.removeListener('error', onError);
       const addr = server.address();
-      console.log(`realtime server listening on :${addr && addr.port}`);
+      const ts = formatTimestamp(new Date());
+      console.log(`${ts} realtime server listening on :${addr && addr.port}`);
       resolve(addr && addr.port);
     });
   });
@@ -494,7 +516,19 @@ function stop() {
   });
 }
 
+// Helper: human-readable timestamp
+function pad(n) { return String(n).padStart(2, '0'); }
+function formatTimestamp(d) {
+  try {
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  } catch (e) {
+    return (new Date()).toISOString();
+  }
+}
+
 if (require.main === module) {
+  // When run directly (or restarted by a watcher), print a labelled restart message
+  console.log(`Restarting 'server.js' ${formatTimestamp(new Date())}`);
   start();
 }
 

@@ -73,12 +73,34 @@
     <script>
       // Multiplayer wiring using server /game - always enabled now with default room
       (function(){
-        window.USE_MULTIPLAYER = true;
+        // Determine initial mode from query (?mode=ai or ?ai=1) else default Online
+        (function(){
+          const q = new URLSearchParams(location.search);
+          const mode = (q.get('mode')||'').toLowerCase();
+          const ai = q.get('ai');
+          const aiRequested = (mode === 'ai') || (ai === '1') || (ai === 'true');
+          window.USE_MULTIPLAYER = !aiRequested;
+        })();
+        // Simple debug toggle: ?debug=1 or localStorage.DEBUG_MP = '1'
+        const urlDebug = /[?&]debug=1/.test(location.search);
+        const isLocalDev = ['localhost', '127.0.0.1'].includes(location.hostname);
+        window.DEBUG_MP = urlDebug || (localStorage.getItem('DEBUG_MP') === '1') || isLocalDev;
+        if (window.DEBUG_MP) console.log('[mp] debug enabled');
         // Keep in sync with server constants for client prediction
-        const TICK_RATE = 30; // Hz
-        const PADDLE_SPEED = 0.5; // units/sec
-        const DT = 1 / TICK_RATE;
+        let TICK_RATE = 30; // Hz (will be replaced by /game/config)
+        let PADDLE_SPEED = 0.5; // units/sec
+        let DT = 1 / TICK_RATE;
         window.PADDLE_HEIGHT_NORM = 0.2;
+        // Load server config to avoid drift
+        try {
+          fetch('/game/config').then(r=>r.json()).then(cfg=>{
+            if (cfg && typeof cfg.TICK_RATE==='number') TICK_RATE = cfg.TICK_RATE;
+            if (cfg && typeof cfg.PADDLE_SPEED==='number') PADDLE_SPEED = cfg.PADDLE_SPEED;
+            if (cfg && typeof cfg.PADDLE_HEIGHT==='number') window.PADDLE_HEIGHT_NORM = cfg.PADDLE_HEIGHT;
+            DT = 1 / TICK_RATE;
+            if (window.DEBUG_MP) console.log('[mp] config', {TICK_RATE, PADDLE_SPEED, PADDLE_HEIGHT_NORM: window.PADDLE_HEIGHT_NORM});
+          }).catch((e)=>{ if (window.DEBUG_MP) console.warn('[mp] config fetch failed', e); });
+        } catch (e) { if (window.DEBUG_MP) console.warn('[mp] config error', e); }
         let sock = null, side = null;
         let upTimer=null, downTimer=null;
         let mySeq = 0;
@@ -119,6 +141,8 @@
         // Snapshot buffer for interpolation
         window.STATE_BUFFER = window.STATE_BUFFER || [];
         window.RENDER_BUFFER_MS = window.RENDER_BUFFER_MS || 100;
+        let __lastRoundState = null;
+        let __lastAckSeqLog = -1, __lastPendingLog = -1;
         function applyState(s){
           try{
             // Reconciliation: drop acked inputs using server's lastSeq
@@ -127,24 +151,51 @@
               for (let i = pending.length - 1; i >= 0; i--) {
                 if (pending[i].seq <= ackSeq) pending.splice(i,1);
               }
+              if (window.DEBUG_MP) {
+                const pLen = pending.length;
+                const shouldLog = (ackSeq > 0 && ackSeq !== __lastAckSeqLog) || (pLen > 0 && pLen !== __lastPendingLog);
+                if (shouldLog) {
+                  console.log('[mp] state ack', { side, ackSeq, pending: pLen });
+                  __lastAckSeqLog = ackSeq;
+                  __lastPendingLog = pLen;
+                }
+              }
             }
             const snap = {
               _at: performance.now(), // local receipt time
               t: s.t,
               paddles: { left: Number(s.paddles.left)||0.5, right: Number(s.paddles.right)||0.5 },
               ball: { x: Number(s.ball.x)||0.5, y: Number(s.ball.y)||0.5 },
-              scores: s.scores || { left: 0, right: 0 }
+              scores: s.scores || { left: 0, right: 0 },
+              // include server round state so client can detect whether the server has started
+              roundState: s.roundState || 'waiting',
+              roundTimer: Number(s.roundTimer) || 0
             };
             const buf = window.STATE_BUFFER;
             buf.push(snap);
             if (buf.length > 60) buf.splice(0, buf.length - 60);
+            if (window.DEBUG_MP && __lastRoundState !== snap.roundState) {
+              console.log('[mp] roundState', __lastRoundState, '->', snap.roundState, 'ball', snap.ball, 'paddles', snap.paddles);
+              __lastRoundState = snap.roundState;
+            }
+            // Multiplayer waiting UI
+            if (window.USE_MULTIPLAYER) {
+              const box = document.getElementById('messageBox');
+              const text = document.getElementById('messageText');
+              const btn = document.getElementById('restartButton');
+              if (snap.roundState === 'waiting') {
+                if (box && text && btn) { box.classList.remove('hidden'); text.textContent = `Waiting for another player to join${window.ROOM_ID?` in room “${window.ROOM_ID}”`:''}…`; btn.classList.add('hidden'); }
+              } else {
+                if (box && text && btn) { text.textContent = ''; btn.classList.remove('hidden'); box.classList.add('hidden'); }
+              }
+            }
             // Update scores immediately
             if (s.scores && window.updateScores){
               if (typeof player==='object') player.score = s.scores.left|0;
               if (typeof computer==='object') computer.score = s.scores.right|0;
               updateScores();
             }
-          }catch(e){ /* noop */ }
+          }catch(e){ if (window.DEBUG_MP) console.warn('[mp] applyState error', e); }
         }
         function stepMultiplayer(now){
           const buf = window.STATE_BUFFER;
@@ -157,6 +208,9 @@
           }
           const span = Math.max(1, b._at - a._at);
           const t = Math.max(0, Math.min(1, (target - a._at)/span));
+          if (window.DEBUG_MP && (Math.random() < 0.02)) {
+            console.log('[mp] interp', { buf: buf.length, target: Math.round(target)%10000, aT: Math.round(a._at)%10000, bT: Math.round(b._at)%10000, t: Number(t.toFixed(2)), aRS: a.roundState, bRS: b.roundState });
+          }
           const lerp = (x0,x1)=> x0 + (x1-x0)*t;
           // Base interpolated values from server
           const leftY = lerp(a.paddles.left, b.paddles.left);
@@ -177,13 +231,21 @@
           if (window.ball){ ball.x = normToPxX(ballX); ball.y = normToPxY(ballY) + (window.BALL_RADIUS||10); }
         }
         function setupSocket(){
+          if (sock) return;
           sock = io('/game');
-          sock.emit('join', { roomId: window.ROOM_ID, name: 'Player' }, (ack)=>{ side = ack && ack.side; console.log('joined room', window.ROOM_ID, 'side=', side); });
+          sock.on('connect', ()=>{ if (window.DEBUG_MP) console.log('[mp] socket connected', sock.id); });
+          sock.on('disconnect', (r)=>{ if (window.DEBUG_MP) console.log('[mp] socket disconnected', r); });
+          sock.emit('join', { roomId: window.ROOM_ID, name: 'Player' }, (ack)=>{
+            side = ack && ack.side;
+            if (window.DEBUG_MP) console.log('[mp] joined', { room: window.ROOM_ID, side, role: ack && ack.role, maxPlayers: ack && ack.maxPlayers });
+          });
           sock.on('state', applyState);
           sock.on('gameState', applyState);
           // Clear buffer on reconnect
-          sock.on('reconnect', ()=> { window.STATE_BUFFER = []; });
+          sock.on('reconnect', ()=> { if (window.DEBUG_MP) console.log('[mp] reconnect, clearing buffer'); window.STATE_BUFFER = []; });
         }
+        // Only auto-connect sockets if starting in multiplayer mode via query
+        if (window.USE_MULTIPLAYER) setupSocket();
         // Hook key events to emit to server (simulation disabled in update())
         window.addEventListener('keydown', (e)=>{
           const k = e.key;
@@ -195,7 +257,6 @@
           if (k==='ArrowUp' || k==='w' || k==='W') stopRepeat('up');
           if (k==='ArrowDown' || k==='s' || k==='S') stopRepeat('down');
         });
-        setupSocket();
       })();
     </script>
 
@@ -230,8 +291,11 @@
     <!-- Start Overlay (required for autoplay policies) -->
     <div id="startOverlay" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
         <div class="message-box rounded-lg p-8 text-center">
-            <p class="text-2xl mb-6 text-white" style="text-shadow: 0 0 10px #00ffff;">Click Start to enable sound</p>
-            <button id="startButton" class="restart-btn py-3 px-6 rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50">Start</button>
+            <p class="text-2xl mb-6 text-white" style="text-shadow: 0 0 10px #00ffff;">Choose mode</p>
+            <div class="flex gap-4 justify-center">
+              <button id="startButton" class="restart-btn py-3 px-6 rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50">Play Online</button>
+              <button id="startAIButton" class="restart-btn py-3 px-6 rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50">Play vs AI</button>
+            </div>
         </div>
     </div>
 
@@ -1085,6 +1149,8 @@ function applySpeedMultiplierToBall(mult) {
                     await Tone.start();
                     console.log("Audio context started.");
                 }
+
+
                 setupAudio();
                 audioReady = (Tone.context.state === 'running');
             } catch (e) {
@@ -1095,18 +1161,18 @@ function applySpeedMultiplierToBall(mult) {
         // Start overlay interactions
         const startOverlay = document.getElementById('startOverlay');
         const startButton = document.getElementById('startButton');
-        async function handleStart() {
-            try {
-                await loadTone();
-            } catch (e) {
-                console.warn('Tone.js failed to load; continuing without audio.', e);
-            }
-            await startAudioContext();
-            startOverlay.classList.add('hidden');
-        }
+        const startAIButton = document.getElementById('startAIButton');
+
+        // Online start uses multiplayer and shows waiting overlay if needed
+        async function handleStart(){ return handleStartOnline(); }
         startButton.addEventListener('click', () => {
+            if (window.DEBUG_MP) console.log('[ui] Start button clicked (Online)');
             if (audioSystem) audioSystem.playButtonClick();
-            handleStart();
+            handleStartOnline();
+        });
+        if (startAIButton) startAIButton.addEventListener('click', () => {
+            if (audioSystem) audioSystem.playButtonClick();
+            handleStartAI();
         });
         startOverlay.addEventListener('click', (e) => {
             // allow clicking outside button to start as well
@@ -1125,6 +1191,35 @@ function applySpeedMultiplierToBall(mult) {
             player.y = clientY - rect.top - player.height / 2;
             if (player.y < 0) player.y = 0;
             if (player.y > canvas.height - player.height) player.y = canvas.height - player.height;
+        }
+
+        async function handleStartOnline(){
+            try { await loadTone(); } catch(e) { console.warn('Tone.js failed to load; continuing without audio.', e); }
+            await startAudioContext();
+            startOverlay.classList.add('hidden');
+            window.USE_MULTIPLAYER = true;
+            setupSocket();
+            if (window.DEBUG_MP) console.log('[ui] Play Online clicked -> multiplayer mode');
+            // Show waiting UI until server starts the round
+            const WAIT_MSG = `Waiting for another player to join${window.ROOM_ID?` in room \u201c${window.ROOM_ID}\u201d`:''}\u2026`;
+            const last = window.STATE_BUFFER && window.STATE_BUFFER[window.STATE_BUFFER.length-1];
+            if (!last || last.roundState === 'waiting') {
+                const box = document.getElementById('messageBox');
+                const text = document.getElementById('messageText');
+                const btn = document.getElementById('restartButton');
+                if (box && text && btn) { box.classList.remove('hidden'); text.textContent = WAIT_MSG; btn.classList.add('hidden'); }
+            }
+        }
+        async function handleStartAI(){
+            try { await loadTone(); } catch(e) { console.warn('Tone.js failed to load; continuing without audio.', e); }
+            await startAudioContext();
+            startOverlay.classList.add('hidden');
+            window.USE_MULTIPLAYER = false;
+            if (window.DEBUG_MP) console.log('[ui] Play vs AI clicked -> single-player mode');
+            // Hide any waiting overlay
+            const box = document.getElementById('messageBox'); const btn = document.getElementById('restartButton');
+            if (box) box.classList.add('hidden'); if (btn) btn.classList.remove('hidden');
+            if (!gameRunning) initGameObjects();
         }
 
         canvas.addEventListener('mousemove', movePlayer);
