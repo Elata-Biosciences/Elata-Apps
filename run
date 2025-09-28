@@ -69,6 +69,48 @@ kill_on_port() {
     echo "No process found on port $port."
   fi
 }
+ensure_ngrok_3000() {
+  # Start an ngrok tunnel to http 3000 if none is running.
+  if ! command -v ngrok >/dev/null 2>&1; then
+    echo "ngrok not found in PATH. Skipping ngrok tunnel."
+    return 0
+  fi
+  local api="http://127.0.0.1:4040/api/tunnels"
+  # If ngrok API is up, check if there's already a tunnel to localhost:3000
+  if curl -sf "$api" >/dev/null 2>&1; then
+    local json
+    json=$(curl -sf "$api" || true)
+    if echo "$json" | grep -q '"addr":"http://localhost:3000"'; then
+      # Extract first https public_url if possible (no jq dependency)
+      local pub
+      pub=$(echo "$json" | sed -n 's/.*"public_url":"\(https:\/\/[^"[:space:]]*\)".*/\1/p' | head -n1)
+      if [ -n "${pub:-}" ]; then
+        echo "ngrok already running. Public URL: $pub"
+      else
+        echo "ngrok already running. See dashboard at http://127.0.0.1:4040"
+      fi
+      return 0
+    fi
+  fi
+  echo "Starting ngrok tunnel for http 3000..."
+  (ngrok http 3000 > ngrok.log 2>&1 &)
+  # Wait briefly for API to expose the tunnel
+  for i in 1 2 3 4 5 6 7 8; do
+    sleep 1
+    if curl -sf "$api" >/dev/null 2>&1; then
+      local json2
+      json2=$(curl -sf "$api" || true)
+      if echo "$json2" | grep -q '"addr":"http://localhost:3000"'; then
+        local pub
+        pub=$(echo "$json2" | sed -n 's/.*"public_url":"\(https:\/\/[^"[:space:]]*\)".*/\1/p' | head -n1)
+        echo "ngrok ready: ${pub:-see http://127.0.0.1:4040}"
+        return 0
+      fi
+    fi
+  done
+  echo "ngrok launched but public URL not detected yet. Check ngrok.log or http://127.0.0.1:4040"
+}
+
 
 # --- Command Logic ---
 
@@ -109,6 +151,7 @@ while [ $# -gt 0 ]; do
         ensure_deps "server"
         watch_pongo_css_bg
         echo "Starting main server in watch mode..."
+        ensure_ngrok_3000 || true
         exec bash -lc "cd server && DEBUG_GAME=1 NODE_ENV=development npm run dev"
         ;;
 
@@ -122,6 +165,7 @@ while [ $# -gt 0 ]; do
         ensure_deps "server"
         build_pongo_css_once
         echo "Starting main server..."
+        ensure_ngrok_3000 || true
         exec bash -lc "cd server && npm start"
         ;;
 
@@ -134,6 +178,7 @@ while [ $# -gt 0 ]; do
         ensure_deps "server"
         build_pongo_css_once
         echo "Starting main server..."
+        ensure_ngrok_3000 || true
         exec bash -lc "cd server && npm start"
         ;;
 

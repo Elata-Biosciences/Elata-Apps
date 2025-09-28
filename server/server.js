@@ -392,6 +392,24 @@ game.on('connection', (socket) => {
         }
       });
 
+      // Allow clients to request a restart/new round
+      socket.on('game:restart', () => {
+        try {
+          const room = getOrCreateRoom(roomId);
+          console.log('[game] restart requested', room.id, 'by', socket.id);
+          if (room.players.size >= 2) {
+            room.scores = { left: 0, right: 0 };
+            startNewRound(room);
+            game.to(room.id).emit('system:restart', { ok: true });
+          } else {
+            socket.emit('system:restart', { ok: false, reason: 'need two players' });
+          }
+        } catch (e) {
+          console.error('[game] restart error', e);
+        }
+      });
+
+
       ack && ack({ ok: true, playerId: socket.id, side: side, role: side ? 'player' : 'spectator', maxPlayers: room.maxPlayers });
       // Notify others someone joined
       socket.to(id).emit('player:join', { playerId: socket.id, side, name });
@@ -555,8 +573,14 @@ eeg.on('connection', (socket) => {
 
 function start(port = PORT) {
   return new Promise((resolve, reject) => {
-    // Attach a one-time error handler so listen errors (EADDRINUSE etc.) are
-    // reported with a timestamp instead of crashing with an uncaught exception.
+    if (server.listening) {
+      const addr = server.address();
+      // This can happen in watch mode if the server is already running.
+      // In this case, we can just resolve and let the existing server continue.
+      console.log(`Server is already running on port ${addr.port}`);
+      return resolve(addr.port);
+    }
+
     const onError = (err) => {
       const ts = typeof formatTimestamp === 'function' ? formatTimestamp(new Date()) : new Date().toISOString();
       console.error(`Realtime server error: ${err && err.message ? err.message : String(err)}`);

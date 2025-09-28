@@ -230,15 +230,29 @@
             if (window.clientLog) window.clientLog('roundState', { prev: __lastRoundState, next: snap.roundState, ball: snap.ball, paddles: snap.paddles, t: snap.t });
             __lastRoundState = snap.roundState;
           }
-          // Multiplayer waiting UI
+          // Multiplayer waiting/countdown UI
           if (window.USE_MULTIPLAYER) {
             const box = document.getElementById('messageBox');
             const text = document.getElementById('messageText');
             const btn = document.getElementById('restartButton');
+            const countdownElem = document.getElementById('countdown');
+            // Waiting for players
             if (snap.roundState === 'waiting') {
               if (box && text && btn) { box.classList.remove('hidden'); text.textContent = `Waiting for another player to join${window.ROOM_ID?` in room “${window.ROOM_ID}”`:''}…`; btn.classList.add('hidden'); }
+              if (countdownElem) countdownElem.style.display = 'none';
             } else {
               if (box && text && btn) { text.textContent = ''; btn.classList.remove('hidden'); box.classList.add('hidden'); }
+              // Server-driven countdown overlay
+              if (countdownElem) {
+                if (snap.roundState === 'countdown') {
+                  const t = Math.max(0, Number(snap.roundTimer)||0);
+                  const n = Math.max(1, Math.ceil(t)); // 3..1 while t>0
+                  countdownElem.textContent = String(n);
+                  countdownElem.style.display = 'flex';
+                } else {
+                  countdownElem.style.display = 'none';
+                }
+              }
             }
           }
           // Update scores immediately
@@ -247,7 +261,7 @@
             if (typeof computer==='object') computer.score = s.scores.right|0;
             updateScores();
           }
-        }catch(e){ if (window.DEBUG_MP) console.warn('[mp] applyState error', e); }
+        }catch(e){ if (window.DEBUG_MP) console.warn('[mp] applyState error', e); try{ window.clientLog && window.clientLog('applyState-error', { message: String(e && e.message || e), stack: String(e && e.stack || '') }); }catch(_){} }
       }
       function stepMultiplayer(now){
         const buf = window.STATE_BUFFER;
@@ -295,7 +309,9 @@
               ballNorm: { x: Number(ballX.toFixed(3)), y: Number(ballY.toFixed(3)) },
               buf: buf.length,
               aT: Math.round(a._at)%10000, bT: Math.round(b._at)%10000, t: Number(t.toFixed(2)),
-              side
+              side,
+              roundStateA: a.roundState,
+              roundStateB: b.roundState
             });
           }
         }catch(e){}
@@ -361,6 +377,7 @@
     <!-- Button to open speed modal -->
     <div class="text-center mb-4">
         <button id="speedButton" class="restart-btn py-2 px-4 rounded-lg text-sm">Ball Speed</button>
+        <button id="restartGameButton" class="restart-btn py-2 px-4 rounded-lg text-sm ml-2">Restart</button>
     </div>
 
     <div class="relative w-full max-w-4xl mt-2">
@@ -406,7 +423,7 @@
     </div>
 
     <!-- Countdown Display -->
-    <div id="countdown" class="absolute inset-0 flex items-center justify-center text-white text-9xl font-bold" style="display: none; text-shadow: 0 0 20px #00ffff;"></div>
+    <div id="countdown" class="absolute inset-0 flex items-center justify-center text-white text-9xl font-bold z-40" style="display: none; text-shadow: 0 0 20px #00ffff;"></div>
 
     <script>
         const canvas = document.getElementById('pongCanvas');
@@ -1211,7 +1228,7 @@ function applySpeedMultiplierToBall(mult) {
             const dt = Math.min((now - lastTime) / 1000, 0.033); // cap to avoid huge jumps
             lastTime = now;
             if (gameRunning) update(dt);
-            if (window.USE_MULTIPLAYER) { try { stepMultiplayer(now); } catch(e){} }
+            if (window.USE_MULTIPLAYER) { try { stepMultiplayer(now); } catch(e){ try{ window.clientLog && window.clientLog('render-error', { message: String(e && e.message || e), stack: String(e && e.stack || '') }); }catch(_){} } }
             render();
             requestAnimationFrame(gameLoop);
         }
@@ -1381,9 +1398,23 @@ function applySpeedMultiplierToBall(mult) {
 
         restartButton.addEventListener('click', () => {
             if (audioSystem && !isMuted) audioSystem.playButtonClick();
-            messageBox.classList.add('hidden');
-            initGameObjects();
-            updateScores();
+            if (window.USE_MULTIPLAYER && window.sock) {
+                try { window.clientLog && window.clientLog('ui:restart-click', {}); } catch(_){}
+                // Ask server to restart round/match
+                window.sock.emit('game:restart', { roomId: window.ROOM_ID });
+
+        // Global restart button (always visible)
+        const restartGameButton = document.getElementById('restartGameButton');
+
+
+                const toast = document.getElementById('toast'); if (toast){ toast.textContent = 'Restart requested…'; toast.style.display='block'; setTimeout(()=>toast.style.display='none', 1500); }
+                messageBox.classList.add('hidden');
+            } else {
+                messageBox.classList.add('hidden');
+                initGameObjects();
+                updateScores();
+                startCountdown();
+            }
         });
 
         // Speed modal functionality
@@ -1397,6 +1428,22 @@ function applySpeedMultiplierToBall(mult) {
 
         // Preserve state on resize and keep canvas fully on-screen
         let resizeRaf = null;
+
+        // Global restart button (always visible)
+        const restartGameButton = document.getElementById('restartGameButton');
+        if (restartGameButton) restartGameButton.addEventListener('click', () => {
+            if (audioSystem && !isMuted) audioSystem.playButtonClick();
+            if (window.USE_MULTIPLAYER && window.sock) {
+                try { window.clientLog && window.clientLog('ui:restart-click', { source: 'toolbar' }); } catch(_){ }
+                window.sock.emit('game:restart', { roomId: window.ROOM_ID });
+                const toast = document.getElementById('toast'); if (toast){ toast.textContent = 'Restart requested…'; toast.style.display='block'; setTimeout(()=>toast.style.display='none', 1500); }
+            } else {
+                initGameObjects();
+                updateScores();
+                startCountdown();
+            }
+        });
+
         function resizeCanvasPreserveState() {
             const oldW = canvas.width;
             const oldH = canvas.height;
