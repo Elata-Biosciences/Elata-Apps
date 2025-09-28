@@ -274,9 +274,12 @@
         selfY = side ? applyPrediction(selfY) : selfY;
         // Write to scene
         // Smooth the local paddle to hide reconciliation snaps
-        const localTarget = centerNormToPxTop(selfY, PADDLE_HEIGHT);
-        const otherTargetLeft  = centerNormToPxTop(leftY,  PADDLE_HEIGHT);
-        const otherTargetRight = centerNormToPxTop(rightY, PADDLE_HEIGHT);
+        const PADDLE_H = (typeof window.PADDLE_HEIGHT === 'number' && window.PADDLE_HEIGHT > 0)
+          ? window.PADDLE_HEIGHT
+          : ((window.PADDLE_HEIGHT_NORM || 0.2) * ((window.canvas && canvas.height) || window.innerHeight));
+        const localTarget = centerNormToPxTop(selfY, PADDLE_H);
+        const otherTargetLeft  = centerNormToPxTop(leftY,  PADDLE_H);
+        const otherTargetRight = centerNormToPxTop(rightY, PADDLE_H);
         window.__MP_LAST_TS = (typeof window.__MP_LAST_TS==='number') ? window.__MP_LAST_TS : now;
         const dtMs = Math.max(0, Math.min(50, (typeof now==='number'? now : performance.now()) - window.__MP_LAST_TS));
         window.__MP_LAST_TS = (typeof now==='number'? now : performance.now());
