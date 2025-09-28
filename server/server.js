@@ -174,7 +174,7 @@ function createInitialGameState(id) {
 function startLoop(room) {
   if (room.timer) return;
   room.lastTick = Date.now();
-  if (DEBUG_GAME) console.log('[game] startLoop', room.id, 'state=', room.roundState);
+  console.log('[game] startLoop', room.id, 'state=', room.roundState);
   room.timer = setInterval(() => tick(room), 1000 / TICK_RATE);
 }
 
@@ -216,7 +216,7 @@ function tick(room) {
       if (room.roundTimer <= 0) {
         room.roundState = 'playing';
         const serveDirection = Math.random() > 0.5 ? 1 : -1;
-        if (DEBUG_GAME) console.log('[game] start PLAYING', room.id, 'serve dir=', serveDirection);
+        console.log('[game] start PLAYING', room.id, 'serve dir=', serveDirection);
         resetBall(room, serveDirection);
       }
       break;
@@ -329,7 +329,7 @@ function startNewRound(room) {
   room.ball.y = 0.5;
   room.ball.vx = 0;
   room.ball.vy = 0;
-  if (DEBUG_GAME) console.log('[game] startNewRound', room.id, 'countdown', COUNTDOWN_SECONDS);
+  console.log('[game] startNewRound', room.id, 'countdown', COUNTDOWN_SECONDS);
 }
 
 function resetBall(room, dir) {
@@ -337,7 +337,7 @@ function resetBall(room, dir) {
   room.ball.y = 0.5;
   room.ball.vx = dir * INITIAL_BALL_SPEED;
   room.ball.vy = (Math.random() * 0.4 - 0.2);
-  if (DEBUG_GAME) console.log('[game] resetBall', room.id, 'vx=', room.ball.vx.toFixed(3), 'vy=', room.ball.vy.toFixed(3));
+  console.log('[game] resetBall', room.id, 'vx=', room.ball.vx.toFixed(3), 'vy=', room.ball.vy.toFixed(3));
 }
 
 game.on('connection', (socket) => {
@@ -350,7 +350,7 @@ game.on('connection', (socket) => {
       const name = payload.name ? String(payload.name) : 'anon';
       if (!rooms.has(id)) rooms.set(id, createInitialGameState(id));
       const room = rooms.get(id);
-      if (DEBUG_GAME) console.log('[game] join', { room: id, socket: socket.id, players: room.players.size, spectators: room.spectators.size });
+      console.log('[game] join', { room: id, socket: socket.id, players: room.players.size, spectators: room.spectators.size });
 
       // Join socket.io room
       socket.join(id);

@@ -319,12 +319,11 @@
     <div id="startOverlay" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
         <div class="message-box rounded-lg p-8 text-center">
             <p class="text-2xl mb-6 text-white" style="text-shadow: 0 0 10px #00ffff;">Choose mode</p>
-            <div class="flex gap-4 justify-center">
-              <button id="startButton" class="restart-btn py-3 px-6 rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50">Play Online</button>
-              <button id="startAIButton" class="restart-btn py-3 px-6 rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50">Play vs AI</button>
+            <div class="space-y-4 mb-6">
+              <button id="startButton" class="restart-btn py-3 px-8 rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50 w-64">Play Online</button>
+              <button id="startAIButton" class="restart-btn py-3 px-8 rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50 w-64">Play vs AI</button>
             </div>
-        <button id="copyLinkButton" class="restart-btn mt-4 py-3 px-6 rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50">Copy room link</button>
-
+            <button id="copyLinkButton" class="restart-btn py-3 px-8 rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50 w-64">Copy room link</button>
         </div>
     </div>
 
@@ -350,6 +349,9 @@
             <button id="closeSpeedModal" class="restart-btn mt-6 py-2 px-6 rounded-lg">Close</button>
         </div>
     </div>
+
+    <!-- Countdown Display -->
+    <div id="countdown" class="absolute inset-0 flex items-center justify-center text-white text-9xl font-bold" style="display: none; text-shadow: 0 0 20px #00ffff;"></div>
 
     <script>
         const canvas = document.getElementById('pongCanvas');
@@ -380,6 +382,7 @@
         const speedButton = document.getElementById('speedButton');
         const speedModal = document.getElementById('speedModal');
         const closeSpeedModal = document.getElementById('closeSpeedModal');
+        const countdownElem = document.getElementById('countdown');
 
         // --- Game Constants ---
         const PADDLE_WIDTH = 15;
@@ -923,8 +926,8 @@ function applySpeedMultiplierToBall(mult) {
                 x: canvas.width / 2,
                 y: canvas.height / 2,
                 radius: BALL_RADIUS,
-                vx: dirX * BASE_SPEED * Math.cos(angle),
-                vy: dirY * BASE_SPEED * Math.sin(angle),
+                vx: 0,
+                vy: 0,
                 maxSpeed: canvas.width * MAX_SPEED_MULTIPLIER * speedMultiplier
             };
             player = { x: 10, y: canvas.height / 2 - PADDLE_HEIGHT / 2, width: PADDLE_WIDTH, height: PADDLE_HEIGHT, score: 0 };
@@ -968,16 +971,42 @@ function applySpeedMultiplierToBall(mult) {
         }
 
         // --- Game Logic ---
-        function resetBall() {
-                    const BASE_SPEED = canvas.width * 0.7 * speedMultiplier;
+        function resetBall(launch = true) {
+            ball.x = canvas.width / 2;
+            ball.y = canvas.height / 2;
+            ball.vx = 0;
+            ball.vy = 0;
+            ball.maxSpeed = canvas.width * MAX_SPEED_MULTIPLIER * speedMultiplier;
+
+            if (launch && !window.USE_MULTIPLAYER) {
+                startCountdown();
+            }
+        }
+
+        function launchBall() {
+            const BASE_SPEED = canvas.width * 0.7 * speedMultiplier;
             const angle = Math.PI / 4;
             const dirX = Math.random() > 0.5 ? 1 : -1;
             const dirY = Math.random() > 0.5 ? 1 : -1;
-            ball.x = canvas.width / 2;
-            ball.y = canvas.height / 2;
             ball.vx = dirX * BASE_SPEED * Math.cos(angle);
             ball.vy = dirY * BASE_SPEED * Math.sin(angle);
-                    ball.maxSpeed = canvas.width * MAX_SPEED_MULTIPLIER * speedMultiplier;
+        }
+
+        function startCountdown() {
+            let count = 3;
+            countdownElem.textContent = count;
+            countdownElem.style.display = 'flex';
+
+            const countdownInterval = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    countdownElem.textContent = count;
+                } else {
+                    clearInterval(countdownInterval);
+                    countdownElem.style.display = 'none';
+                    launchBall();
+                }
+            }, 1000);
         }
 
         function update(dt) {
@@ -1233,7 +1262,10 @@ function applySpeedMultiplierToBall(mult) {
             // Hide any waiting overlay
             const box = document.getElementById('messageBox'); const btn = document.getElementById('restartButton');
             if (box) box.classList.add('hidden'); if (btn) btn.classList.remove('hidden');
-            if (!gameRunning) initGameObjects();
+            if (!gameRunning) {
+                initGameObjects();
+                startCountdown();
+            }
         }
 
         if (!window.USE_MULTIPLAYER) {
