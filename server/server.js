@@ -252,24 +252,6 @@ function tick(room) {
       // Left paddle collision
       if (room.ball.vx < 0 && room.ball.x <= PADDLE_WIDTH + BALL_RADIUS) {
 
-  // Periodic debug snapshot (once per ~1s)
-  if (DEBUG_GAME) {
-    if (!room.__lastDebugLogAt) room.__lastDebugLogAt = 0;
-    if ((now - room.__lastDebugLogAt) >= 1000) {
-      try {
-        console.log('[game] tick', room.id, JSON.stringify({
-          state: room.roundState,
-          timer: Number(room.roundTimer || 0).toFixed(2),
-          ball: { x: Number(room.ball.x).toFixed(3), y: Number(room.ball.y).toFixed(3), vx: Number(room.ball.vx).toFixed(3), vy: Number(room.ball.vy).toFixed(3) },
-          paddles: { left: Number(room.paddles.left.y).toFixed(3), right: Number(room.paddles.right.y).toFixed(3) },
-          scores: room.scores,
-          players: room.players.size,
-          sides: room.sides,
-        }));
-      } catch {}
-      room.__lastDebugLogAt = now;
-    }
-  }
 
         if (Math.abs(room.ball.y - room.paddles.left.y) <= padH / 2) {
           room.ball.x = PADDLE_WIDTH + BALL_RADIUS;
@@ -281,6 +263,7 @@ function tick(room) {
           room.ball.vy += spin * 0.3;
         } else if (room.ball.x < 0) {
           // Right scores
+          console.log('[game] score', room.id, 'right', 'ball=', { x: room.ball.x.toFixed(3), y: room.ball.y.toFixed(3) });
           room.scores.right += 1;
           startNewRound(room);
         }
@@ -296,6 +279,7 @@ function tick(room) {
           room.ball.vy += spin * 0.3;
         } else if (room.ball.x > 1) {
           // Left scores
+          console.log('[game] score', room.id, 'left', 'ball=', { x: room.ball.x.toFixed(3), y: room.ball.y.toFixed(3) });
           room.scores.left += 1;
           startNewRound(room);
         }
@@ -320,6 +304,25 @@ function tick(room) {
   };
   game.to(room.id).emit('state', state);
   game.to(room.id).emit('gameState', state);
+  // Periodic debug snapshot (once per ~1s)
+  if (DEBUG_GAME) {
+    if (!room.__lastDebugLogAt) room.__lastDebugLogAt = 0;
+    if ((now - room.__lastDebugLogAt) >= 1000) {
+      try {
+        console.log('[game] tick', room.id, JSON.stringify({
+          state: room.roundState,
+          timer: Number(room.roundTimer || 0).toFixed(2),
+          ball: { x: Number(room.ball.x).toFixed(3), y: Number(room.ball.y).toFixed(3), vx: Number(room.ball.vx).toFixed(3), vy: Number(room.ball.vy).toFixed(3) },
+          paddles: { left: Number(room.paddles.left.y).toFixed(3), right: Number(room.paddles.right.y).toFixed(3) },
+          scores: room.scores,
+          players: room.players.size,
+          sides: room.sides,
+        }));
+      } catch {}
+      room.__lastDebugLogAt = now;
+    }
+  }
+
 }
 
 function startNewRound(room) {
@@ -377,6 +380,17 @@ game.on('connection', (socket) => {
       }
 
       startLoop(room);
+
+
+      // Accept client-side logs for correlation (saved to server file logs)
+      socket.on('client:log', (msg = {}) => {
+        try {
+          const m = typeof msg === 'object' ? msg : { message: String(msg) };
+          console.log('[client]', roomId, side, socket.id, m.event || m.message || '', m.data || {});
+        } catch (e) {
+          console.error('[client] log error', e);
+        }
+      });
 
       ack && ack({ ok: true, playerId: socket.id, side: side, role: side ? 'player' : 'spectator', maxPlayers: room.maxPlayers });
       // Notify others someone joined
@@ -554,7 +568,7 @@ function start(port = PORT) {
       server.removeListener('error', onError);
       const addr = server.address();
       const ts = formatTimestamp(new Date());
-      console.log(`${ts} realtime server listening on :${addr && addr.port}`);
+      console.log(`${ts} realtime server listening on localhost:${addr && addr.port}`);
       resolve(addr && addr.port);
     });
   });

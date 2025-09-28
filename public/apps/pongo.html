@@ -57,6 +57,26 @@
         #muteButton {
             text-shadow: 0 0 10px #00ffff;
         }
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: rgba(0, 255, 255, 0.9);
+            color: #0f0c29;
+            padding: 12px 24px;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.7);
+            font-family: 'Press Start 2P', cursive;
+            font-size: 12px;
+            z-index: 1000;
+            opacity: 0;
+            transform: translateY(-20px);
+            transition: all 0.3s ease;
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
     </style>
 </head>
 <body class="flex flex-col items-center justify-start sm:justify-center min-h-screen p-2 sm:p-4">
@@ -89,6 +109,17 @@
         window.DEBUG_MP = urlDebug || (localStorage.getItem('DEBUG_MP') === '1') || isLocalDev;
         if (window.DEBUG_MP) console.log('[mp] debug enabled');
       })();
+
+        // Forward important client-side events to the server log (saved to /logs)
+        window.clientLog = function(event, data){
+          try{
+            if (window.DEBUG_MP) console.log('[client]', event, data||{});
+            if (window.sock && typeof window.sock.emit==='function'){
+              window.sock.emit('client:log', { event, data });
+            }
+          }catch(e){}
+        };
+
 
       // Multiplayer logic now in global scope to be accessible
       let sock = null, side = null;
@@ -194,8 +225,9 @@
           const buf = window.STATE_BUFFER;
           buf.push(snap);
           if (buf.length > 60) buf.splice(0, buf.length - 60);
-          if (window.DEBUG_MP && __lastRoundState !== snap.roundState) {
-            console.log('[mp] roundState', __lastRoundState, '->', snap.roundState, 'ball', snap.ball, 'paddles', snap.paddles);
+          if (__lastRoundState !== snap.roundState) {
+            if (window.DEBUG_MP) console.log('[mp] roundState', __lastRoundState, '->', snap.roundState, 'ball', snap.ball, 'paddles', snap.paddles);
+            if (window.clientLog) window.clientLog('roundState', { prev: __lastRoundState, next: snap.roundState, ball: snap.ball, paddles: snap.paddles, t: snap.t });
             __lastRoundState = snap.roundState;
           }
           // Multiplayer waiting UI
@@ -249,6 +281,22 @@
         const dtMs = Math.max(0, Math.min(50, (typeof now==='number'? now : performance.now()) - window.__MP_LAST_TS));
         window.__MP_LAST_TS = (typeof now==='number'? now : performance.now());
         const SMOOTH_MS = 80;
+        // Periodic client render log (1/sec)
+        try{
+          const nowMs = (typeof now==='number'? now : performance.now());
+          window.__lastClientBallLog = typeof window.__lastClientBallLog==='number' ? window.__lastClientBallLog : 0;
+          if (nowMs - window.__lastClientBallLog > 1000) {
+            window.__lastClientBallLog = nowMs;
+            if (window.clientLog) window.clientLog('render', {
+              ballPx: { x: Math.round(ball.x), y: Math.round(ball.y) },
+              ballNorm: { x: Number(ballX.toFixed(3)), y: Number(ballY.toFixed(3)) },
+              buf: buf.length,
+              aT: Math.round(a._at)%10000, bT: Math.round(b._at)%10000, t: Number(t.toFixed(2)),
+              side
+            });
+          }
+        }catch(e){}
+
         const k = 1 - Math.exp(-dtMs / SMOOTH_MS);
         if (typeof window.__RENDER_SELF_Y !== 'number') window.__RENDER_SELF_Y = localTarget;
         window.__RENDER_SELF_Y = window.__RENDER_SELF_Y + (localTarget - window.__RENDER_SELF_Y) * k;
@@ -265,16 +313,18 @@
       function setupSocket(){
         if (sock) return;
         sock = io('/game');
-        sock.on('connect', ()=>{ if (window.DEBUG_MP) console.log('[mp] socket connected', sock.id); });
-        sock.on('disconnect', (r)=>{ if (window.DEBUG_MP) console.log('[mp] socket disconnected', r); });
+        window.sock = sock;
+        sock.on('connect', ()=>{ if (window.DEBUG_MP) console.log('[mp] socket connected', sock.id); window.clientLog && window.clientLog('connect', { id: sock.id, room: window.ROOM_ID }); });
+        sock.on('disconnect', (r)=>{ if (window.DEBUG_MP) console.log('[mp] socket disconnected', r); window.clientLog && window.clientLog('disconnect', { reason: r }); });
         sock.emit('join', { roomId: window.ROOM_ID, name: 'Player' }, (ack)=>{
           side = ack && ack.side;
           if (window.DEBUG_MP) console.log('[mp] joined', { room: window.ROOM_ID, side, role: ack && ack.role, maxPlayers: ack && ack.maxPlayers });
+          window.clientLog && window.clientLog('joined', { room: window.ROOM_ID, side, role: ack && ack.role, maxPlayers: ack && ack.maxPlayers });
         });
         sock.on('state', applyState);
         sock.on('gameState', applyState);
         // Clear buffer on reconnect
-        sock.on('reconnect', ()=> { if (window.DEBUG_MP) console.log('[mp] reconnect, clearing buffer'); window.STATE_BUFFER = []; });
+        sock.on('reconnect', ()=> { if (window.DEBUG_MP) console.log('[mp] reconnect, clearing buffer'); window.STATE_BUFFER = []; window.clientLog && window.clientLog('reconnect', {}); });
       }
       // Only auto-connect sockets if starting in multiplayer mode via query
       if (window.USE_MULTIPLAYER) setupSocket();
@@ -315,15 +365,17 @@
         <button id="muteButton" class="absolute top-4 right-4 text-white text-3xl focus:outline-none opacity-75 hover:opacity-100 transition-opacity">🔊</button>
     </div>
 
+    <!-- Toast notification -->
+    <div id="toast" class="toast"></div>
+
     <!-- Start Overlay (required for autoplay policies) -->
     <div id="startOverlay" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
         <div class="message-box rounded-lg p-8 text-center">
             <p class="text-2xl mb-6 text-white" style="text-shadow: 0 0 10px #00ffff;">Choose mode</p>
-            <div class="space-y-4 mb-6">
-              <button id="startButton" class="restart-btn py-3 px-8 rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50 w-64">Play Online</button>
-              <button id="startAIButton" class="restart-btn py-3 px-8 rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50 w-64">Play vs AI</button>
+            <div class="space-y-4">
+              <button id="startButton" class="restart-btn py-3 px-8 rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50 w-64">Multiplayer</button>
+              <button id="startAIButton" class="restart-btn py-3 px-8 rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50 w-64">Single Player</button>
             </div>
-            <button id="copyLinkButton" class="restart-btn py-3 px-8 rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50 w-64">Copy room link</button>
         </div>
     </div>
 
@@ -1185,31 +1237,38 @@ function applySpeedMultiplierToBall(mult) {
             }
         }
 
+        // Toast notification function
+        function showToast(message, duration = 3000) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, duration);
+        }
+
         // Start overlay interactions
         const startOverlay = document.getElementById('startOverlay');
         const startButton = document.getElementById('startButton');
-        const copyLinkButton = document.getElementById('copyLinkButton');
-        if (copyLinkButton) copyLinkButton.addEventListener('click', async () => {
-            const url = window.location.href;
-            if (audioSystem) audioSystem.playButtonClick();
-            try {
-                await navigator.clipboard.writeText(url);
-                const prev = copyLinkButton.textContent;
-                copyLinkButton.textContent = 'Copied!';
-                setTimeout(()=> copyLinkButton.textContent = prev, 1500);
-            } catch (err) {
-                // Fallback if Clipboard API unavailable
-                window.prompt('Copy this link:', url);
-            }
-        });
 
         const startAIButton = document.getElementById('startAIButton');
 
         // Online start uses multiplayer and shows waiting overlay if needed
         async function handleStart(){ return handleStartOnline(); }
-        startButton.addEventListener('click', () => {
+        startButton.addEventListener('click', async () => {
             if (window.DEBUG_MP) console.log('[ui] Start button clicked (Online)');
             if (audioSystem) audioSystem.playButtonClick();
+
+            // Auto-copy room link for multiplayer
+            const url = window.location.href;
+            try {
+                await navigator.clipboard.writeText(url);
+                showToast('Room link copied to clipboard!');
+            } catch (err) {
+                // Fallback if Clipboard API unavailable
+                showToast('Room link: ' + url);
+            }
+
             handleStartOnline();
         });
         if (startAIButton) startAIButton.addEventListener('click', () => {

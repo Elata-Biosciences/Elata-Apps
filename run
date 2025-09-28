@@ -17,8 +17,6 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT_DIR"
 
-ACTION="${1:-start}"
-
 # --- Helper Functions ---
 
 usage() {
@@ -74,63 +72,76 @@ kill_on_port() {
 
 # --- Command Logic ---
 
-case "$ACTION" in
-  help|-h|--help)
-    usage
-    ;;
+while [ $# -gt 0 ]; do
+    ACTION="${1:-start}"
 
-  test)
-    ensure_deps "server"
-    echo "Running server tests..."
-    (cd server && npm test)
-    ;;
+    case "$ACTION" in
+    help|-h|--help)
+        usage
+        ;;
 
-  build)
-    ensure_deps "Pongo"
-    build_pongo_css_once
-    echo "Build complete."
-    ;;
+    test)
+        ensure_deps "server"
+        echo "Running server tests..."
+        (cd server && npm test)
+        ;;
 
-  deploy)
-    echo "Build assets first by running: ./run build"
-    echo
-    echo "DigitalOcean App Platform Commands:"
-    echo "  Build: npm ci --prefix server && npm ci --prefix Pongo && npm run build:css:once --prefix Pongo"
-    echo "  Run:   npm start --prefix server"
-    ;;
+    build)
+        ensure_deps "Pongo"
+        build_pongo_css_once
+        echo "Build complete."
+        ;;
 
-  dev)
-    ensure_deps "Pongo"
-    ensure_deps "server"
-    watch_pongo_css_bg
-    echo "Starting main server in watch mode..."
-    exec bash -lc "cd server && npm run dev"
-    ;;
+    deploy)
+        echo "Build assets first by running: ./run build"
+        echo
+        echo "DigitalOcean App Platform Commands:"
+        echo "  Build: npm ci --prefix server && npm ci --prefix Pongo && npm run build:css:once --prefix Pongo"
+        echo "  Run:   npm start --prefix server"
+        ;;
 
-  restart)
-    kill_on_port 3000
-    ensure_deps "Pongo"
-    ensure_deps "server"
-    build_pongo_css_once
-    echo "Starting main server..."
-    exec bash -lc "cd server && npm start"
-    ;;
+    dev)
+        if lsof -ti:3000 > /dev/null; then
+        echo "Server is already running on port 3000. Use './run stop' first."
+        exit 0
+        fi
+        ensure_deps "Pongo"
+        ensure_deps "server"
+        watch_pongo_css_bg
+        echo "Starting main server in watch mode..."
+        exec bash -lc "cd server && DEBUG_GAME=1 NODE_ENV=development npm run dev"
+        ;;
 
-  start)
-    if lsof -ti:3000 > /dev/null; then
-      echo "Server is already running on port 3000. Use './run restart' to force it."
-      exit 0
-    fi
-    ensure_deps "Pongo"
-    ensure_deps "server"
-    build_pongo_css_once
-    echo "Starting main server..."
-    exec bash -lc "cd server && npm start"
-    ;;
+    stop)
+        kill_on_port 3000
+        ;;
 
-  *)
-    echo "Unknown command: $ACTION"
-    usage
-    exit 1
-    ;;
-esac
+    restart)
+        kill_on_port 3000
+        ensure_deps "Pongo"
+        ensure_deps "server"
+        build_pongo_css_once
+        echo "Starting main server..."
+        exec bash -lc "cd server && npm start"
+        ;;
+
+    start)
+        if lsof -ti:3000 > /dev/null; then
+        echo "Server is already running on port 3000. Use './run restart' to force it."
+        exit 0
+        fi
+        ensure_deps "Pongo"
+        ensure_deps "server"
+        build_pongo_css_once
+        echo "Starting main server..."
+        exec bash -lc "cd server && npm start"
+        ;;
+
+    *)
+        echo "Unknown command: $ACTION"
+        usage
+        exit 1
+        ;;
+    esac
+      shift
+done
