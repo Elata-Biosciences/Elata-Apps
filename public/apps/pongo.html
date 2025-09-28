@@ -64,9 +64,68 @@
         try {
           const parts = (location.pathname || '/').split('/').filter(Boolean);
           window.APP_SLUG = parts[0] || 'pongo';
-          window.ROOM_ID = parts[1] || 'default';
-          console.log('App/Room:', window.APP_SLUG, window.ROOM_ID);
+          window.ROOM_ID = parts[1] || '';
+          if (window.ROOM_ID) console.log('App/Room:', window.APP_SLUG, window.ROOM_ID);
         } catch {}
+      })();
+    </script>
+
+    <script>
+      // Multiplayer wiring using server /game when ROOM_ID is present in clean URL
+      (function(){
+        if (!window.ROOM_ID) return;
+        window.USE_MULTIPLAYER = true;
+        let sock = null, side = null;
+        let upTimer=null, downTimer=null;
+        function startRepeat(dir){
+          if ((dir==='up' && upTimer) || (dir==='down' && downTimer)) return;
+          const send = ()=> sock && sock.emit('input', { dir });
+          if (dir==='up') { upTimer = setInterval(send, 60); send(); }
+          if (dir==='down') { downTimer = setInterval(send, 60); send(); }
+        }
+        function stopRepeat(dir){
+          if (dir==='up' && upTimer){ clearInterval(upTimer); upTimer=null; }
+          if (dir==='down' && downTimer){ clearInterval(downTimer); downTimer=null; }
+        }
+        function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+        function normToPxY(n){
+          const h = (window.canvas && canvas.height) || window.innerHeight;
+          return clamp(n,0,1) * (h - (window.PADDLE_HEIGHT||100));
+        }
+        function normToPxX(n){
+          const w = (window.canvas && canvas.width) || window.innerWidth;
+          return clamp(n,0,1) * w;
+        }
+        function applyState(s){
+          try{
+            if (!window.canvas) return;
+            if (window.player && s.paddles){ player.y = normToPxY(s.paddles.left); }
+            if (window.computer && s.paddles){ computer.y = normToPxY(s.paddles.right); }
+            if (window.ball && s.ball){ ball.x = normToPxX(s.ball.x); ball.y = normToPxY(s.ball.y) + (window.BALL_RADIUS||10); }
+            if (s.scores && window.updateScores){
+              if (typeof player==='object') player.score = s.scores.left|0;
+              if (typeof computer==='object') computer.score = s.scores.right|0;
+              updateScores();
+            }
+          }catch(e){ /* noop */ }
+        }
+        function setupSocket(){
+          sock = io('/game');
+          sock.emit('join', { roomId: window.ROOM_ID, name: 'Player' }, (ack)=>{ side = ack && ack.side; console.log('joined room', window.ROOM_ID, 'side=', side); });
+          sock.on('state', applyState);
+        }
+        // Hook key events to emit to server (simulation disabled in update())
+        window.addEventListener('keydown', (e)=>{
+          const k = e.key;
+          if (k==='ArrowUp' || k==='w' || k==='W'){ startRepeat('up'); e.preventDefault(); }
+          if (k==='ArrowDown' || k==='s' || k==='S'){ startRepeat('down'); e.preventDefault(); }
+        });
+        window.addEventListener('keyup', (e)=>{
+          const k = e.key;
+          if (k==='ArrowUp' || k==='w' || k==='W') stopRepeat('up');
+          if (k==='ArrowDown' || k==='s' || k==='S') stopRepeat('down');
+        });
+        setupSocket();
       })();
     </script>
 
@@ -800,6 +859,7 @@ function applySpeedMultiplierToBall(mult) {
         }
 
         function update(dt) {
+            if (window.USE_MULTIPLAYER) return;
             if (!gameRunning) return;
 
             // Move ball
