@@ -64,22 +64,34 @@
         try {
           const parts = (location.pathname || '/').split('/').filter(Boolean);
           window.APP_SLUG = parts[0] || 'pongo';
-          window.ROOM_ID = parts[1] || '';
+          window.ROOM_ID = parts[1] || 'default'; // Always use 'default' room if no room specified
           if (window.ROOM_ID) console.log('App/Room:', window.APP_SLUG, window.ROOM_ID);
         } catch {}
       })();
     </script>
 
     <script>
-      // Multiplayer wiring using server /game when ROOM_ID is present in clean URL
+      // Multiplayer wiring using server /game - always enabled now with default room
       (function(){
-        if (!window.ROOM_ID) return;
         window.USE_MULTIPLAYER = true;
+        // Keep in sync with server constants for client prediction
+        const TICK_RATE = 30; // Hz
+        const PADDLE_SPEED = 0.5; // units/sec
+        const DT = 1 / TICK_RATE;
+        window.PADDLE_HEIGHT_NORM = 0.2;
         let sock = null, side = null;
         let upTimer=null, downTimer=null;
+        let mySeq = 0;
+        const pending = []; // {seq, direction}
+        function sendMove(direction){
+          if (!sock) return;
+          const seq = ++mySeq;
+          sock.emit('input', { action:'move', direction, seq });
+          pending.push({ seq, direction });
+        }
         function startRepeat(dir){
           if ((dir==='up' && upTimer) || (dir==='down' && downTimer)) return;
-          const send = ()=> sock && sock.emit('input', { dir });
+          const send = ()=> sendMove(dir);
           if (dir==='up') { upTimer = setInterval(send, 60); send(); }
           if (dir==='down') { downTimer = setInterval(send, 60); send(); }
         }
@@ -96,12 +108,37 @@
           const w = (window.canvas && canvas.width) || window.innerWidth;
           return clamp(n,0,1) * w;
         }
+        function applyPrediction(baseY){
+          let y = baseY;
+          for (const inp of pending){
+            const dy = inp.direction === 'up' ? -PADDLE_SPEED * DT : PADDLE_SPEED * DT;
+            y = clamp(y + dy, 0 + (window.PADDLE_HEIGHT_NORM||0.2)/2, 1 - (window.PADDLE_HEIGHT_NORM||0.2)/2);
+          }
+          return y;
+        }
+        // Snapshot buffer for interpolation
+        window.STATE_BUFFER = window.STATE_BUFFER || [];
+        window.RENDER_BUFFER_MS = window.RENDER_BUFFER_MS || 100;
         function applyState(s){
           try{
-            if (!window.canvas) return;
-            if (window.player && s.paddles){ player.y = normToPxY(s.paddles.left); }
-            if (window.computer && s.paddles){ computer.y = normToPxY(s.paddles.right); }
-            if (window.ball && s.ball){ ball.x = normToPxX(s.ball.x); ball.y = normToPxY(s.ball.y) + (window.BALL_RADIUS||10); }
+            // Reconciliation: drop acked inputs using server's lastSeq
+            if (side && s.lastSeq){
+              const ackSeq = s.lastSeq[side];
+              for (let i = pending.length - 1; i >= 0; i--) {
+                if (pending[i].seq <= ackSeq) pending.splice(i,1);
+              }
+            }
+            const snap = {
+              _at: performance.now(), // local receipt time
+              t: s.t,
+              paddles: { left: Number(s.paddles.left)||0.5, right: Number(s.paddles.right)||0.5 },
+              ball: { x: Number(s.ball.x)||0.5, y: Number(s.ball.y)||0.5 },
+              scores: s.scores || { left: 0, right: 0 }
+            };
+            const buf = window.STATE_BUFFER;
+            buf.push(snap);
+            if (buf.length > 60) buf.splice(0, buf.length - 60);
+            // Update scores immediately
             if (s.scores && window.updateScores){
               if (typeof player==='object') player.score = s.scores.left|0;
               if (typeof computer==='object') computer.score = s.scores.right|0;
@@ -109,10 +146,43 @@
             }
           }catch(e){ /* noop */ }
         }
+        function stepMultiplayer(now){
+          const buf = window.STATE_BUFFER;
+          if (!buf || buf.length === 0) return;
+          const target = (typeof now === 'number' ? now : performance.now()) - window.RENDER_BUFFER_MS;
+          // Find bracketing snapshots
+          let a = buf[0], b = buf[buf.length-1];
+          for (let i=0;i<buf.length-1;i++){
+            if (buf[i]._at <= target && target <= buf[i+1]._at){ a = buf[i]; b = buf[i+1]; break; }
+          }
+          const span = Math.max(1, b._at - a._at);
+          const t = Math.max(0, Math.min(1, (target - a._at)/span));
+          const lerp = (x0,x1)=> x0 + (x1-x0)*t;
+          // Base interpolated values from server
+          const leftY = lerp(a.paddles.left, b.paddles.left);
+          const rightY = lerp(a.paddles.right, b.paddles.right);
+          const ballX = lerp(a.ball.x, b.ball.x);
+          const ballY = lerp(a.ball.y, b.ball.y);
+          // Apply client prediction to own paddle
+          let selfY = side==='left' ? leftY : rightY;
+          selfY = side ? applyPrediction(selfY) : selfY;
+          // Write to scene
+          if (side==='left') {
+            if (window.player) player.y = normToPxY(selfY);
+            if (window.computer) computer.y = normToPxY(rightY);
+          } else if (side==='right') {
+            if (window.computer) computer.y = normToPxY(selfY);
+            if (window.player) player.y = normToPxY(leftY);
+          }
+          if (window.ball){ ball.x = normToPxX(ballX); ball.y = normToPxY(ballY) + (window.BALL_RADIUS||10); }
+        }
         function setupSocket(){
           sock = io('/game');
           sock.emit('join', { roomId: window.ROOM_ID, name: 'Player' }, (ack)=>{ side = ack && ack.side; console.log('joined room', window.ROOM_ID, 'side=', side); });
           sock.on('state', applyState);
+          sock.on('gameState', applyState);
+          // Clear buffer on reconnect
+          sock.on('reconnect', ()=> { window.STATE_BUFFER = []; });
         }
         // Hook key events to emit to server (simulation disabled in update())
         window.addEventListener('keydown', (e)=>{
@@ -995,6 +1065,7 @@ function applySpeedMultiplierToBall(mult) {
             const dt = Math.min((now - lastTime) / 1000, 0.033); // cap to avoid huge jumps
             lastTime = now;
             if (gameRunning) update(dt);
+            if (window.USE_MULTIPLAYER) { try { stepMultiplayer(now); } catch(e){} }
             render();
             requestAnimationFrame(gameLoop);
         }

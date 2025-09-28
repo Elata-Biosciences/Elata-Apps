@@ -3,74 +3,349 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Elata Apps – App Store</title>
+  <title>Elata Apps – Neuroscience Application Suite</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
-    :root { --bg:#0b0f14; --card:#121821; --fg:#e8eef7; --muted:#9bb0c9; --accent:#61d0ff; }
-    *{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Ubuntu,Helvetica,Arial,sans-serif;background:linear-gradient(120deg,#0b0f14,#0e141d 70%);color:var(--fg)}
-    header{max-width:960px;margin:32px auto 12px;padding:0 16px}
-    h1{margin:0 0 8px;font-weight:700;letter-spacing:.2px}
-    p.lead{margin:0;color:var(--muted)}
-    .grid{max-width:960px;margin:24px auto 64px;padding:0 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px}
-    .card{background:linear-gradient(180deg,var(--card),#0f1620);border:1px solid #1a2431;border-radius:14px;padding:18px;box-shadow:0 10px 24px rgba(0,0,0,.25)}
-    .card h2{margin:0 0 6px;font-size:20px}
-    .card p{margin:0 0 16px;color:var(--muted);min-height:44px}
-    .tags{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 16px}
-    .tag{font-size:12px;padding:4px 8px;border-radius:999px;background:#0d2230;border:1px solid #123c56;color:#9bd8ff}
-    .actions{display:flex;gap:10px;flex-wrap:wrap}
-    a.btn{appearance:none;display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:10px;border:1px solid #1a2431;color:var(--fg);text-decoration:none;background:#0f1a26}
-    a.btn.primary{background:linear-gradient(180deg,#0f3a52,#0d2b40);border-color:#144461;color:#e6f7ff}
-    a.btn:hover{filter:brightness(1.05)}
-    footer{max-width:960px;margin:0 auto 48px;padding:0 16px;color:var(--muted);font-size:14px}
-    .logo{font-weight:800;letter-spacing:.3px;color:#cfe9ff}
+    :root { 
+      --bg-primary: #0a0e13;
+      --bg-secondary: #0f1419;
+      --bg-card: #1a1f26;
+      --bg-card-hover: #1f252d;
+      --border-primary: #2a3441;
+      --border-secondary: #1e2832;
+      --text-primary: #ffffff;
+      --text-secondary: #b8c5d1;
+      --text-muted: #7d8b96;
+      --accent-primary: #00d4ff;
+      --accent-secondary: #0099cc;
+      --accent-tertiary: #004d66;
+      --gradient-primary: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
+      --gradient-bg: linear-gradient(180deg, #0a0e13 0%, #0f1419 50%, #1a1f26 100%);
+      --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.3);
+      --shadow-card-hover: 0 12px 48px rgba(0, 0, 0, 0.4);
+    }
+    
+    * { box-sizing: border-box; }
+    
+    body {
+      margin: 0;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--gradient-bg);
+      color: var(--text-primary);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+    
+    header {
+      padding: 48px 0 32px;
+      text-align: center;
+      border-bottom: 1px solid var(--border-secondary);
+      margin-bottom: 48px;
+    }
+    
+    .logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 800;
+      font-size: 24px;
+      color: var(--accent-primary);
+      margin-bottom: 16px;
+      text-decoration: none;
+    }
+    
+    .logo::before {
+      content: "⚡";
+      font-size: 28px;
+    }
+    
+    h1 {
+      margin: 0 0 16px;
+      font-weight: 700;
+      font-size: clamp(2rem, 4vw, 3rem);
+      letter-spacing: -0.02em;
+      background: var(--gradient-primary);
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    
+    .lead {
+      margin: 0;
+      font-size: 18px;
+      color: var(--text-secondary);
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    
+    .subtitle {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-top: 8px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+      gap: 32px;
+      margin-bottom: 80px;
+    }
+    
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-primary);
+      border-radius: 16px;
+      padding: 32px;
+      box-shadow: var(--shadow-card);
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: var(--gradient-primary);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    
+    .card:hover {
+      background: var(--bg-card-hover);
+      box-shadow: var(--shadow-card-hover);
+      transform: translateY(-4px);
+      border-color: var(--accent-tertiary);
+    }
+    
+    .card:hover::before {
+      opacity: 1;
+    }
+    
+    .card h2 {
+      margin: 0 0 12px;
+      font-size: 24px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    
+    .card p {
+      margin: 0 0 24px;
+      color: var(--text-secondary);
+      font-size: 16px;
+      line-height: 1.5;
+    }
+    
+    .tags {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 0 0 24px;
+    }
+    
+    .tag {
+      font-size: 12px;
+      font-weight: 500;
+      padding: 6px 12px;
+      border-radius: 20px;
+      background: var(--accent-tertiary);
+      border: 1px solid var(--accent-secondary);
+      color: var(--accent-primary);
+      letter-spacing: 0.025em;
+    }
+    
+    .actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    
+    .btn {
+      appearance: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 20px;
+      border-radius: 12px;
+      border: 1px solid var(--border-primary);
+      color: var(--text-primary);
+      text-decoration: none;
+      background: var(--bg-secondary);
+      font-weight: 500;
+      font-size: 14px;
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+    
+    .btn.primary {
+      background: var(--gradient-primary);
+      border-color: var(--accent-secondary);
+      color: var(--bg-primary);
+      font-weight: 600;
+    }
+    
+    .btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    }
+    
+    .btn.primary:hover {
+      box-shadow: 0 4px 16px rgba(0, 212, 255, 0.3);
+    }
+    
+    .btn:active {
+      transform: translateY(0);
+    }
+    
+    footer {
+      padding: 32px 0 48px;
+      border-top: 1px solid var(--border-secondary);
+      text-align: center;
+    }
+    
+    .footer-content {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    
+    .footer-links {
+      display: flex;
+      gap: 24px;
+      align-items: center;
+    }
+    
+    .footer-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.2s ease;
+    }
+    
+    .footer-links a:hover {
+      color: var(--accent-primary);
+    }
+    
+    .health-status {
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+    
+    .health-status a {
+      color: var(--accent-primary);
+      text-decoration: none;
+    }
+    
+    @media (max-width: 768px) {
+      .container {
+        padding: 0 16px;
+      }
+      
+      .grid {
+        grid-template-columns: 1fr;
+        gap: 24px;
+      }
+      
+      .card {
+        padding: 24px;
+      }
+      
+      .footer-content {
+        flex-direction: column;
+        text-align: center;
+      }
+    }
   </style>
 </head>
 <body>
   <header>
-    <div class="logo">Elata Apps</div>
-    <h1>App Store</h1>
-    <p class="lead">Browse and launch real‑time experiences running on this server.</p>
+    <div class="container">
+      <a href="https://www.elata.bio/" class="logo">Elata Apps</a>
+      <div class="subtitle">Mind & Gaming Apps</div>
+      <h1>Play with Your Mind</h1>
+      <p class="lead">Fun games and relaxing experiences that connect to your thoughts and feelings. No expertise needed – just plug in and play!</p>
+    </div>
   </header>
 
-  <main class="grid">
-    <section class="card">
-      <h2>Pongo – Multiplayer Pong</h2>
-      <p>Two‑player, server‑authoritative Pong over WebSockets. Works in any modern browser.</p>
-      <div class="tags">
-        <span class="tag">Socket.IO</span><span class="tag">Realtime</span><span class="tag">Canvas</span>
-      </div>
-      <div class="actions">
-        <a class="btn primary" href="/apps/pongo.html">Open</a>
-        <a class="btn" href="/docs/pong-multiplayer.md" target="_blank" rel="noopener">Docs</a>
-      </div>
-    </section>
+  <main class="container">
+    <div class="grid">
+      <section class="card">
+        <h2>Pongo – Classic Pong Game</h2>
+        <p>Play the classic Pong game online with friends! Challenge someone to a match in this smooth, responsive version of the timeless arcade game. No downloads needed.</p>
+        <div class="tags">
+          <span class="tag">2 Players</span>
+          <span class="tag">Classic Game</span>
+          <span class="tag">Online Play</span>
+          <span class="tag">No Download</span>
+        </div>
+        <div class="actions">
+          <a class="btn primary" href="/pongo/default">Play Now</a>
+          <a class="btn" href="/docs/how-to-play-pong.html" target="_blank" rel="noopener">How to Play</a>
+        </div>
+      </section>
 
-    <section class="card">
-      <h2>NeuroBloom – Symmetry Garden</h2>
-      <p>Left‑right alpha asymmetry grows two living plants. Balance your mind, grow your garden.</p>
-      <div class="tags">
-        <span class="tag">EEG</span><span class="tag">Alpha</span><span class="tag">Asymmetry</span>
-      </div>
-      <div class="actions">
-        <a class="btn primary" href="/apps/neurobloom/index.html">Open</a>
-        <a class="btn" href="/elata-eeg/scripts/README.md" target="_blank" rel="noopener">EEG bridge guide</a>
-      </div>
-    </section>
+      <section class="card">
+        <h2>NeuroBloom – Mind Garden</h2>
+        <p>Watch beautiful plants grow and change as you relax and focus your mind. This peaceful experience helps you practice mindfulness while creating your own digital garden.</p>
+        <div class="tags">
+          <span class="tag">Relaxation</span>
+          <span class="tag">Mindfulness</span>
+          <span class="tag">Visual Art</span>
+          <span class="tag">Mind Training</span>
+        </div>
+        <div class="actions">
+          <a class="btn primary" href="/apps/neurobloom/index.html">Start Growing</a>
+          <a class="btn" href="/elata-eeg/scripts/README.md" target="_blank" rel="noopener">Setup Guide</a>
+        </div>
+      </section>
 
-    <section class="card">
-      <h2>NeuroPong Assist</h2>
-      <p>Use calm to gently assist your paddle in Pong. You play; your mind steadies the aim.</p>
-      <div class="tags">
-        <span class="tag">EEG</span><span class="tag">Calm</span><span class="tag">Game Assist</span>
-      </div>
-      <div class="actions">
-        <a class="btn primary" href="/apps/neurobloom/neuro-pong.html">Open</a>
-        <a class="btn" href="/elata-eeg/scripts/README.md" target="_blank" rel="noopener">EEG bridge guide</a>
-      </div>
-    </section>
+      <section class="card">
+        <h2>Mind-Assisted Pong</h2>
+        <p>Play Pong with a twist! When you're calm and focused, your paddle gets a gentle boost. It's a fun way to practice staying relaxed while gaming.</p>
+        <div class="tags">
+          <span class="tag">Mind + Game</span>
+          <span class="tag">Relaxation</span>
+          <span class="tag">Focus Training</span>
+          <span class="tag">Fun Challenge</span>
+        </div>
+        <div class="actions">
+          <a class="btn primary" href="/apps/neurobloom/neuro-pong.html">Try It Out</a>
+          <a class="btn" href="/elata-eeg/scripts/README.md" target="_blank" rel="noopener">Setup Guide</a>
+        </div>
+      </section>
+    </div>
   </main>
 
   <footer>
-    <div>Health: <a href="/health" style="color:var(--accent);text-decoration:none">/health</a></div>
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-links">
+          <a href="https://www.elata.bio/" target="_blank" rel="noopener">About Elata</a>
+          <a href="https://github.com/Elata-Biosciences" target="_blank" rel="noopener">Open Source</a>
+          <a href="https://discord.com/invite/GqS9CstffK" target="_blank" rel="noopener">Community</a>
+          <a href="https://elata-biosciences.gitbook.io/elata/" target="_blank" rel="noopener">Help & Guides</a>
+        </div>
+        <div class="health-status">
+          All systems: <a href="/health">Running smoothly</a>
+        </div>
+      </div>
+    </div>
   </footer>
 </body>
 </html>
