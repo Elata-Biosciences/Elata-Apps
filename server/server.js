@@ -15,7 +15,7 @@ app.get('/health', (req, res) => res.send('ok'));
 // Serve static landing + demos from top-level public/
 app.use(express.static(path.join(__dirname, '..', 'public')));
 // Ensure /apps routes are served from top-level public/apps
-app.use('/apps', express.static(path.join(__dirname, '..', 'public', 'apps')));
+app.use('/apps/pongo', express.static(path.join(__dirname, '..', 'public', 'apps', 'pongo')));
 // Expose repo docs as static under /docs for on-site viewing
 app.use('/docs', express.static(path.join(__dirname, '..', 'docs')));
 
@@ -70,16 +70,10 @@ app.get('/game/config', (_req, res) => {
 });
 
 // Clean URLs for app rooms: /:app/:roomId -> serve the app's HTML
-app.get('/:app/:roomId', (req, res, next) => {
-  const appSlug = String(req.params.app || '').toLowerCase();
-  if (appSlug === 'game') return next(); // allow /game/* endpoints to pass through
-  const publicDir = path.join(__dirname, '..', 'public', 'apps');
-  const candidates = [
-    path.join(publicDir, `${appSlug}.html`),
-    path.join(publicDir, appSlug, 'index.html'),
-  ];
-  const target = candidates.find(p => fs.existsSync(p));
-  if (!target) return next();
+app.get('/pongo/:roomId', (req, res, next) => {
+  const publicDir = path.join(__dirname, '..', 'public', 'apps', 'pongo');
+  const target = path.join(publicDir, 'index.html');
+  if (!fs.existsSync(target)) return next();
   res.sendFile(target);
 });
 
@@ -139,6 +133,39 @@ const TICK_RATE = 30; // 30 ticks per second
 const INPUTS_PER_SEC = 20; // steady rate
 const INPUT_BURST = 10;    // max burst tokens
 const MAX_INPUT_QUEUE = 8; // per player, per tick
+
+// Optional assist to prevent unfair misses under desync
+const ENABLE_ASSIST = process.env.ASSIST_ENABLED === '1';
+const ASSIST_PROB = Number(process.env.ASSIST_PROB || 0);
+
+function maybeAssist(room, sideMissed) {
+  try {
+    if (!ENABLE_ASSIST) return false;
+    if (!(ASSIST_PROB > 0) || Math.random() > ASSIST_PROB) return false;
+    const padH = PADDLE_HEIGHT;
+    if (sideMissed === 'left') {
+      // Place ball at hit position and reflect to the right
+      room.ball.x = PADDLE_WIDTH + BALL_RADIUS;
+      // Aim toward paddle center with slight randomness
+      const targetY = room.paddles.left.y;
+      const spin = (room.ball.y - targetY) / (padH / 2);
+      room.ball.vx = Math.max(0.25, Math.abs(room.ball.vx)) * BALL_SPEED_INCREASE_FACTOR;
+      room.ball.vy = room.ball.vy + spin * 0.25;
+    } else if (sideMissed === 'right') {
+      room.ball.x = 1 - PADDLE_WIDTH - BALL_RADIUS;
+      const targetY = room.paddles.right.y;
+      const spin = (room.ball.y - targetY) / (padH / 2);
+      room.ball.vx = -Math.max(0.25, Math.abs(room.ball.vx)) * BALL_SPEED_INCREASE_FACTOR;
+      room.ball.vy = room.ball.vy + spin * 0.25;
+    } else {
+      return false;
+    }
+    // Clamp vy a bit to avoid extreme angles
+    room.ball.vy = Math.max(-1.8, Math.min(1.8, room.ball.vy));
+    console.log('[assist] rescued', room.id, { sideMissed, ball: { x: Number(room.ball.x).toFixed(3), y: Number(room.ball.y).toFixed(3), vx: Number(room.ball.vx).toFixed(3), vy: Number(room.ball.vy).toFixed(3) } });
+    return true;
+  } catch { return false; }
+}
 
 // Debug toggle via env var; default on in development
 const DEBUG_GAME = (process.env.DEBUG_GAME === '1') || (process.env.NODE_ENV === 'development');
@@ -262,10 +289,12 @@ function tick(room) {
           const spin = (room.ball.y - room.paddles.left.y) / (padH / 2);
           room.ball.vy += spin * 0.3;
         } else if (room.ball.x < 0) {
-          // Right scores
-          console.log('[game] score', room.id, 'right', 'ball=', { x: room.ball.x.toFixed(3), y: room.ball.y.toFixed(3) });
-          room.scores.right += 1;
-          startNewRound(room);
+          if (!maybeAssist(room, 'left')) {
+            // Right scores
+            console.log('[game] score', room.id, 'right', 'ball=', { x: room.ball.x.toFixed(3), y: room.ball.y.toFixed(3) });
+            room.scores.right += 1;
+            startNewRound(room);
+          }
         }
       }
       // Right paddle collision
@@ -278,10 +307,12 @@ function tick(room) {
           const spin = (room.ball.y - room.paddles.right.y) / (padH / 2);
           room.ball.vy += spin * 0.3;
         } else if (room.ball.x > 1) {
-          // Left scores
-          console.log('[game] score', room.id, 'left', 'ball=', { x: room.ball.x.toFixed(3), y: room.ball.y.toFixed(3) });
-          room.scores.left += 1;
-          startNewRound(room);
+          if (!maybeAssist(room, 'right')) {
+            // Left scores
+            console.log('[game] score', room.id, 'left', 'ball=', { x: room.ball.x.toFixed(3), y: room.ball.y.toFixed(3) });
+            room.scores.left += 1;
+            startNewRound(room);
+          }
         }
       }
       break;
@@ -305,6 +336,27 @@ function tick(room) {
   game.to(room.id).emit('state', state);
   game.to(room.id).emit('gameState', state);
   // Periodic debug snapshot (once per ~1s)
+
+  // Per-client rectification: send each player their canonical paddle baseline + ackSeq
+  try {
+    for (const [socketId, player] of room.players.entries()) {
+      const other = player.side === 'left' ? 'right' : 'left';
+      const rectify = {
+        t: now,
+        side: player.side,
+        ackSeq: player.lastProcessedSeq || 0,
+        selfY: room.paddles[player.side]?.y ?? 0.5,
+        oppY: room.paddles[other]?.y ?? 0.5,
+        roundState: room.roundState,
+        roundTimer: room.roundTimer,
+        scores: room.scores,
+      };
+      game.to(socketId).emit('rectify', rectify);
+    }
+  } catch (e) {
+    // non-fatal
+  }
+
   if (DEBUG_GAME) {
     if (!room.__lastDebugLogAt) room.__lastDebugLogAt = 0;
     if ((now - room.__lastDebugLogAt) >= 1000) {
@@ -347,6 +399,14 @@ game.on('connection', (socket) => {
   let roomId = null;
   let side = null;
 
+  // Lightweight time sync for client reconciliation (client sends {c0})
+  socket.on('time', (msg = {}, ack) => {
+    try {
+      const serverNow = Date.now();
+      ack && ack({ serverNow, echo: (msg && msg.c0) });
+    } catch {}
+  });
+
   socket.on('join', (payload = {}, ack) => {
     try {
       const id = String(payload.roomId || 'default');
@@ -386,6 +446,32 @@ game.on('connection', (socket) => {
       socket.on('client:log', (msg = {}) => {
         try {
           const m = typeof msg === 'object' ? msg : { message: String(msg) };
+
+	      // Test-only hook to mutate room state deterministically
+	      if (process.env.NODE_ENV === 'test') {
+	        socket.on('test:set', (patch = {}, ack) => {
+	          try {
+	            if (!roomId) return ack && ack({ ok: false, error: 'no room' });
+	            const room = rooms.get(roomId);
+	            if (!room) return ack && ack({ ok: false, error: 'no room' });
+	            if (patch.roundState) room.roundState = String(patch.roundState);
+	            if (patch.ball && typeof patch.ball === 'object') {
+	              const b = patch.ball;
+	              if (typeof b.x === 'number') room.ball.x = b.x;
+	              if (typeof b.y === 'number') room.ball.y = b.y;
+	              if (typeof b.vx === 'number') room.ball.vx = b.vx;
+	              if (typeof b.vy === 'number') room.ball.vy = b.vy;
+	            }
+	            if (patch.paddles && typeof patch.paddles === 'object') {
+	              const p = patch.paddles;
+	              if (p.left && typeof p.left.y === 'number') room.paddles.left.y = p.left.y;
+	              if (p.right && typeof p.right.y === 'number') room.paddles.right.y = p.right.y;
+	            }
+	            ack && ack({ ok: true });
+	          } catch (e) { ack && ack({ ok: false, error: 'bad patch' }); }
+	        });
+	      }
+
           console.log('[client]', roomId, side, socket.id, m.event || m.message || '', m.data || {});
         } catch (e) {
           console.error('[client] log error', e);

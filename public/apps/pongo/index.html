@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pongo Game</title>
+    <link rel="stylesheet" href="/apps/pongo/style.css">
+    <link rel="icon" type="image/svg+xml" href="/assets/pongo/favicon.svg">
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body class="flex flex-col items-center justify-start sm:justify-center min-h-screen p-2 sm:p-4">
+
+    <h1 class="text-3xl sm:text-5xl my-2 sm:mb-4 title">PONG</h1>
+
+    <div class="flex w-full max-w-4xl justify-around mb-2 sm:mb-4">
+        <div class="text-center">
+            <h2 class="text-xl sm:text-2xl score-label">PLAYER</h2>
+            <p id="player-score" class="text-4xl sm:text-6xl score">0</p>
+        </div>
+        <div class="text-center">
+            <h2 class="text-xl sm:text-2xl score-label">COMPUTER</h2>
+            <p id="computer-score" class="text-4xl sm:text-6xl score">0</p>
+        </div>
+    </div>
+
+    <!-- Button to open speed modal -->
+    <div class="text-center mb-4">
+        <button id="speedButton" class="restart-btn py-2 px-4 rounded-lg text-sm">Ball Speed</button>
+        <button id="restartGameButton" class="restart-btn py-2 px-4 rounded-lg text-sm ml-2">Restart</button>
+    </div>
+
+    <div class="w-full max-w-4xl mt-2" style="position: relative;">
+        <canvas id="pongCanvas" class="w-full"></canvas>
+        <button id="muteButton" class="text-white text-3xl" style="position:absolute; top:16px; right:16px; opacity:0.75;">🔊</button>
+        <!-- Countdown Display over canvas -->
+        <div id="countdown" style="position:absolute; inset:0; display:none; color:white; font-weight:700; font-size:9rem; z-index:40; text-shadow: 0 0 20px #00ffff; align-items:center; justify-content:center;">
+        </div>
+    </div>
+
+    <!-- Toast notification -->
+    <div id="toast" class="toast"></div>
+
+    <!-- Start Overlay (required for autoplay policies) -->
+    <div id="startOverlay" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+        <div class="message-box rounded-lg p-8 text-center">
+            <p class="text-2xl mb-6 text-white" style="text-shadow: 0 0 10px #00ffff;">Choose mode</p>
+            <div class="space-y-4">
+              <button id="startButton" class="restart-btn py-3 px-8 rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50 w-64">Multiplayer</button>
+              <button id="startAIButton" class="restart-btn py-3 px-8 rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50 w-64">Single Player</button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Custom Message Box -->
+    <div id="messageBox" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center">
+        <div class="message-box rounded-lg p-8 text-center">
+            <p id="messageText" class="text-2xl mb-6 text-white" style="text-shadow: 0 0 10px #00ffff;"></p>
+            <button id="restartButton" class="restart-btn py-3 px-6 rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50">
+                Play Again
+            </button>
+        </div>
+    </div>
+
+    <!-- Speed Control Modal -->
+    <div id="speedModal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+        <div class="message-box rounded-lg p-8 text-center">
+            <label for="speedSlider" class="score-label text-2xl mb-4 block">Ball Speed</label>
+            <div class="mt-2 flex flex-col items-center justify-center gap-4">
+                <input id="speedSlider" type="range" min="0.5" max="2.0" step="0.05" value="1.0" class="w-full max-w-xs">
+                <span id="speedValue" class="score text-2xl">1.00x</span>
+            </div>
+            <button id="closeSpeedModal" class="restart-btn mt-6 py-2 px-6 rounded-lg">Close</button>
+        </div>
+    </div>
+
+    <script type="module" src="/apps/pongo/js/main.js"></script>
+</body>
+</html>
