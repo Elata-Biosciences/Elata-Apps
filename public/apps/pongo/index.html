@@ -43,22 +43,9 @@
 
     <!-- Start Overlay (required for autoplay policies) -->
     <div id="startOverlay" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
-        <div class="message-box rounded-lg p-8 text-center max-w-md">
-            <p class="text-2xl mb-6 text-white" style="text-shadow: 0 0 10px #00ffff;">Ready to Play?</p>
-            <div class="space-y-4">
-              <button id="autoStartBtn" class="restart-btn py-4 px-6 rounded-lg focus:outline-none w-full text-lg">
-                Start Game
-              </button>
-              <p class="text-xs text-white/60">Auto-detects: plays vs AI if alone, switches to multiplayer when opponent joins</p>
-
-              <div class="border-t border-white/20 pt-4 mt-4">
-                <p class="text-sm text-white/80 mb-3">Or choose mode:</p>
-                <div class="grid grid-cols-2 gap-3">
-                  <button class="restart-btn py-3 rounded-lg focus:outline-none player-count text-sm" data-count="1">vs AI</button>
-                  <button class="restart-btn py-3 rounded-lg focus:outline-none player-count text-sm" data-count="2">Multiplayer</button>
-                </div>
-              </div>
-            </div>
+        <div class="message-box rounded-lg p-8 text-center">
+            <p class="text-2xl mb-6 text-white" style="text-shadow: 0 0 10px #00ffff;">Click to Start</p>
+            <button id="startButton" class="restart-btn py-3 px-6 rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50">Start</button>
         </div>
     </div>
 

@@ -1,4 +1,5 @@
 // Pongo/js/game.js
+import { playSound } from './audio.js';
 
 // Game constants
 const PADDLE_WIDTH = 15;
@@ -78,11 +79,13 @@ export function updateGame(useAI) {
     // Ball collision with top/bottom walls
     if (ball.y + ball.radius > canvas.height || ball.y - ball.radius < 0) {
         ball.velocityY = -ball.velocityY;
+        playSound('wallBounce');
     }
 
     // Ball collision with paddles
     let paddle = (ball.x < canvas.width / 2) ? player : computer;
     if (collision(ball, paddle)) {
+        playSound('paddleHit');
         let collidePoint = (ball.y - (paddle.y + paddle.height / 2));
         collidePoint = collidePoint / (paddle.height / 2);
         let angleRad = (Math.PI / 4) * collidePoint;
@@ -98,9 +101,11 @@ export function updateGame(useAI) {
     // Scoring
     if (ball.x - ball.radius < 0) {
         computer.score++;
+        playSound('computerScore');
         resetBall();
     } else if (ball.x + ball.radius > canvas.width) {
         player.score++;
+        playSound('playerScore');
         resetBall();
     }
 }
@@ -120,23 +125,44 @@ function collision(b, p) {
 }
 
 export function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawRect(player.x, player.y, player.width, player.height, player.color);
-    drawRect(computer.x, computer.y, computer.width, computer.height, computer.color);
-    drawCircle(ball.x, ball.y, ball.radius, ball.color);
+    // Clear canvas with a semi-transparent black for motion blur effect
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    drawNet();
+
+    // Draw paddles with glow
+    drawRect(player.x, player.y, player.width, player.height, PADDLE_COLOR);
+    drawRect(computer.x, computer.y, computer.width, computer.height, PADDLE_COLOR);
+
+    // Draw ball with glow
+    drawCircle(ball.x, ball.y, ball.radius, BALL_COLOR);
+}
+
+function drawNet() {
+    for (let i = 0; i < canvas.height; i += 30) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.fillRect(canvas.width / 2 - 1, i, 2, 15);
+    }
 }
 
 function drawRect(x, y, w, h, color) {
     ctx.fillStyle = color;
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = color;
     ctx.fillRect(x, y, w, h);
+    ctx.shadowBlur = 0;
 }
 
 function drawCircle(x, y, r, color) {
     ctx.fillStyle = color;
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = color;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2, false);
     ctx.closePath();
     ctx.fill();
+    ctx.shadowBlur = 0;
 }
 
 export function setSpeedMultiplier(multiplier) {

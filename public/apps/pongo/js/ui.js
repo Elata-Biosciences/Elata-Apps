@@ -4,7 +4,7 @@ import { setSpeedMultiplier } from './game.js';
 
 let playerScoreElem, computerScoreElem, messageBox, messageText, restartButton, muteButton, speedButton, speedModal, closeSpeedModal, countdownElem, startOverlay, toast;
 
-export function initUI(onRestart, onSelectPlayers, onAutoStart) {
+export function initUI(onRestart, onStart) {
     playerScoreElem = document.getElementById('player-score');
     computerScoreElem = document.getElementById('computer-score');
     messageBox = document.getElementById('messageBox');
@@ -20,29 +20,10 @@ export function initUI(onRestart, onSelectPlayers, onAutoStart) {
 
     restartButton.addEventListener('click', onRestart);
 
-    // Auto-start button (auto-detect mode)
-    const autoStartBtn = document.getElementById('autoStartBtn');
-    if (autoStartBtn && typeof onAutoStart === 'function') {
-        autoStartBtn.addEventListener('click', onAutoStart);
+    const startButton = document.getElementById('startButton');
+    if (startButton && typeof onStart === 'function') {
+        startButton.addEventListener('click', onStart);
     }
-
-    // Manual player count selection
-    const buttons = Array.from(document.querySelectorAll('.player-count'));
-    buttons.forEach(btn => btn.addEventListener('click', () => {
-        const n = Number(btn.dataset.count || '0');
-        if (typeof onSelectPlayers === 'function') onSelectPlayers(n);
-    }));
-
-    speedButton.addEventListener('click', () => speedModal.classList.remove('hidden'));
-    closeSpeedModal.addEventListener('click', () => speedModal.classList.add('hidden'));
-
-    const speedSlider = document.getElementById('speedSlider');
-    const speedValue = document.getElementById('speedValue');
-    speedSlider.addEventListener('input', (e) => {
-        const multiplier = parseFloat(e.target.value);
-        setSpeedMultiplier(multiplier);
-        speedValue.textContent = multiplier.toFixed(2) + 'x';
-    });
 }
 
 export function updateScores(playerScore, computerScore) {

@@ -26,32 +26,12 @@ function init() {
     canvas.width = 800;
     canvas.height = 600;
 
-    const q = new URLSearchParams(location.search);
-    const mode = (q.get('mode') || '').toLowerCase();
-    const ai = q.get('ai');
-    const aiRequested = (mode === 'ai') || (ai === '1') || (ai === 'true');
-
-    const urlDebug = /[?&]debug=1/.test(location.search);
     const isLocalDev = ['localhost', '127.0.0.1'].includes(location.hostname);
-    const DEBUG_MP = urlDebug || (localStorage.getItem('DEBUG_MP') === '1') || isLocalDev;
 
     initGame(canvas, ctx);
-    initUI(restartGame, (n)=>selectPlayers(n), ()=>autoDetectMode());
+    initUI(restartGame, startGame);
     initAudio();
-    initMultiplayer(DEBUG_MP);
-
-    // Optional URL override: ?players=1..4 or mode=ai
-    const playersParam = Number(q.get('players') || 0);
-    if (aiRequested) {
-        // Explicit AI mode requested
-        startSinglePlayer();
-    } else if (playersParam) {
-        // Explicit player count requested
-        selectPlayers(playersParam);
-    } else {
-        // Auto-detect: join room and let server tell us if we're alone or not
-        autoDetectMode();
-    }
+    initMultiplayer(isLocalDev);
 
     // Mouse movement for player paddle
     canvas.addEventListener('mousemove', (evt) => {
@@ -81,6 +61,19 @@ function gameLoop(now) {
         }
     }
     animationFrameId = requestAnimationFrame(gameLoop);
+}
+
+function startGame() {
+    // First, try to initialize audio, which requires a user gesture
+    initAudio().then(success => {
+        if (!success) {
+            showToast("Audio could not be initialized.");
+        }
+        // Whether audio succeeded or not, hide the overlay and start the game
+        hideStartOverlay();
+        gameRunning = true;
+        startSinglePlayer();
+    });
 }
 
 function restartGame() {
