@@ -133,6 +133,10 @@ const TICK_RATE = 30; // 30 ticks per second
 const INPUTS_PER_SEC = 20; // steady rate
 const INPUT_BURST = 10;    // max burst tokens
 const MAX_INPUT_QUEUE = 8; // per player, per tick
+// Feature flag: client-authoritative ball simulation
+const CLIENT_AUTH_BALL = process.env.CLIENT_AUTH_BALL === '1';
+const EVENT_WIN_MS = Number(process.env.EVENT_WIN_MS || 120);
+
 
 // Optional assist to prevent unfair misses under desync
 const ENABLE_ASSIST = process.env.ASSIST_ENABLED === '1';
@@ -354,6 +358,36 @@ function tick(room) {
       game.to(socketId).emit('rectify', rectify);
     }
   } catch (e) {
+function sanitizeBall(b = {}) {
+  try {
+    const x = Math.max(-0.2, Math.min(1.2, Number(b.x)));
+    const y = Math.max(-0.2, Math.min(1.2, Number(b.y)));
+    let vx = Number(b.vx); let vy = Number(b.vy);
+    if (!Number.isFinite(vx)) vx = 0; if (!Number.isFinite(vy)) vy = 0;
+    const max = MAX_BALL_SPEED * 2;
+    vx = Math.max(-max, Math.min(max, vx));
+    vy = Math.max(-max, Math.min(max, vy));
+    return { x, y, vx, vy };
+  } catch { return { x: 0.5, y: 0.5, vx: 0, vy: 0 }; }
+}
+
+function emitRectify(room, ball, reason = 'rectify') {
+  try {
+    const tDecision = Date.now();
+    game.to(room.id).emit('rectifyDecision', { tDecision, ball, scores: room.scores, reason });
+  } catch {}
+}
+
+function acceptScore(room, sideFor) {
+  try {
+    if (sideFor !== 'left' && sideFor !== 'right') return;
+    room.scores[sideFor] += 1;
+    const tDecision = Date.now();
+    game.to(room.id).emit('scoreUpdate', { scores: room.scores, tDecision });
+    startNewRound(room);
+  } catch {}
+}
+
     // non-fatal
   }
 
@@ -400,6 +434,10 @@ game.on('connection', (socket) => {
   let side = null;
 
   // Lightweight time sync for client reconciliation (client sends {c0})
+  if (CLIENT_AUTH_BALL && process.env.NODE_ENV === 'test') {
+    try { socket.onAny((ev) => { console.log('[test] recv', ev); }); } catch {}
+  }
+
   socket.on('time', (msg = {}, ack) => {
     try {
       const serverNow = Date.now();
@@ -414,6 +452,14 @@ game.on('connection', (socket) => {
       if (!rooms.has(id)) rooms.set(id, createInitialGameState(id));
       const room = rooms.get(id);
       console.log('[game] join', { room: id, socket: socket.id, players: room.players.size, spectators: room.spectators.size });
+
+      // Optional: allow first joiner to set room maxPlayers (2-4)
+      try {
+        const reqMP = Number(payload.maxPlayers);
+        if (Number.isFinite(reqMP) && room.players.size === 0) {
+          room.maxPlayers = Math.max(2, Math.min(4, reqMP));
+        }
+      } catch {}
 
       // Join socket.io room
       socket.join(id);
@@ -496,7 +542,14 @@ game.on('connection', (socket) => {
       });
 
 
-      ack && ack({ ok: true, playerId: socket.id, side: side, role: side ? 'player' : 'spectator', maxPlayers: room.maxPlayers });
+      ack && ack({
+        ok: true,
+        playerId: socket.id,
+        side: side,
+        role: side ? 'player' : 'spectator',
+        maxPlayers: room.maxPlayers,
+        playerCount: room.players.size
+      });
       // Notify others someone joined
       socket.to(id).emit('player:join', { playerId: socket.id, side, name });
     } catch (e) {
@@ -535,6 +588,7 @@ game.on('connection', (socket) => {
       return;
     }
 
+
     // Legacy: absolute paddle position from client (clamped)
     const y = Number(payload.paddleY);
     if (Number.isFinite(y)) {
@@ -559,6 +613,43 @@ game.on('connection', (socket) => {
       }
       return;
     }
+  });
+
+  // Client-authoritative major events: hit/score (feature-flagged)
+  socket.on('hit', (payload = {}) => {
+    try {
+      if (!CLIENT_AUTH_BALL) return;
+      const room = rooms.get(roomId); if (!room) return;
+      const t = Number(payload.t) || Date.now();
+      room.__lastHit = { t, sideHit: String(payload.sideHit||''), ball: sanitizeBall(payload.ball), paddleY: Number(payload.paddleY) };
+      if (room.__lastScore && Math.abs(t - room.__lastScore.t) <= EVENT_WIN_MS) {
+        if (process.env.NODE_ENV === 'test') console.log('[test] prefer_hit_over_score', room.id);
+        emitRectify(room, room.__lastHit.ball, 'prefer_hit_over_score');
+        room.__lastScore = null;
+        if (room.__lastScoreTimer) { clearTimeout(room.__lastScoreTimer); room.__lastScoreTimer = null; }
+      }
+    } catch {}
+  });
+
+  socket.on('score', (payload = {}) => {
+    try {
+      if (!CLIENT_AUTH_BALL) return;
+      const room = rooms.get(roomId); if (!room) return;
+      const t = Number(payload.t) || Date.now();
+      const sideFor = String(payload.for || '');
+      room.__lastScore = { t, side: sideFor };
+      if (process.env.NODE_ENV === 'test') console.log('[test] score_event', room.id, t, sideFor);
+      if (room.__lastHit && Math.abs(t - room.__lastHit.t) <= EVENT_WIN_MS) {
+        if (process.env.NODE_ENV === 'test') console.log('[test] prefer_hit_over_score (from score)', room.id);
+        emitRectify(room, room.__lastHit.ball, 'prefer_hit_over_score');
+        room.__lastHit = null;
+        return;
+      }
+      if (!room.__lastScoreAcceptAt || (Date.now() - room.__lastScoreAcceptAt) > 150) {
+        acceptScore(room, sideFor);
+        room.__lastScoreAcceptAt = Date.now();
+      }
+    } catch {}
   });
 
   // New explicit event alias for inputs (same handling as above)

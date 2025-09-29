@@ -229,8 +229,8 @@ export function stepMultiplayer(now, player, computer, ball, canvas) {
         player.y = RENDER.lastSelfY;
         computer.y = otherTargetRight;
     } else if (side === 'right') {
-        computer.y = RENDER.lastSelfY;
-        player.y = otherTargetLeft;
+        player.y = RENDER.lastSelfY;
+        computer.y = otherTargetLeft;
     }
     ball.x = RENDER.lastBall.x;
     ball.y = RENDER.lastBall.y;
@@ -246,7 +246,7 @@ function applyPrediction(baseY) {
     return y;
 }
 
-export function setupSocket(roomId) {
+export function setupSocket(roomId, opts = {}) {
     if (sock) return;
     sock = io('/game');
     sock.on('connect', () => {
@@ -258,9 +258,28 @@ export function setupSocket(roomId) {
     sock.on('disconnect', (r) => {
         if (DEBUG_MP) console.log('[mp] socket disconnected', r);
     });
-    sock.emit('join', { roomId, name: 'Player' }, (ack) => {
+    const joinPayload = { roomId, name: 'Player' };
+    if (opts && typeof opts.maxPlayers === 'number') joinPayload.maxPlayers = opts.maxPlayers;
+    if (opts && opts.autoDetect) joinPayload.autoDetect = true;
+
+    sock.emit('join', joinPayload, (ack) => {
         side = ack && ack.side;
-        if (DEBUG_MP) console.log('[mp] joined', { roomId, side, role: ack && ack.role });
+        const playerCount = (ack && ack.playerCount) || 0;
+        const isAlone = playerCount <= 1;
+
+        if (DEBUG_MP) console.log('[mp] joined', {
+            roomId,
+            side,
+            role: ack && ack.role,
+            maxPlayers: ack && ack.maxPlayers,
+            playerCount,
+            isAlone
+        });
+
+        // Call the onRoomState callback if provided
+        if (opts && typeof opts.onRoomState === 'function') {
+            opts.onRoomState({ playerCount, isAlone, side, role: ack && ack.role });
+        }
     });
     sock.on('state', applyState);
     sock.on('gameState', applyState);
@@ -270,6 +289,16 @@ export function setupSocket(roomId) {
         STATE_BUFFER.length = 0;
         try { syncTime(); } catch{}
     });
+
+    // Listen for player join events to switch from AI to multiplayer
+    sock.on('player:join', (msg) => {
+        if (DEBUG_MP) console.log('[mp] player joined', msg);
+        if (opts && typeof opts.onRoomState === 'function') {
+            // Someone joined, we're no longer alone
+            opts.onRoomState({ playerCount: 2, isAlone: false, newPlayer: msg });
+        }
+    });
+
     try { syncTime(); } catch{}
     try { setInterval(syncTime, 3000); } catch{}
 

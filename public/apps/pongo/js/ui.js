@@ -2,9 +2,9 @@
 
 import { setSpeedMultiplier } from './game.js';
 
-let playerScoreElem, computerScoreElem, messageBox, messageText, restartButton, muteButton, speedButton, speedModal, closeSpeedModal, countdownElem, startOverlay, startButton, startAIButton, toast;
+let playerScoreElem, computerScoreElem, messageBox, messageText, restartButton, muteButton, speedButton, speedModal, closeSpeedModal, countdownElem, startOverlay, toast;
 
-export function initUI(onRestart, onStart, onStartAI) {
+export function initUI(onRestart, onSelectPlayers, onAutoStart) {
     playerScoreElem = document.getElementById('player-score');
     computerScoreElem = document.getElementById('computer-score');
     messageBox = document.getElementById('messageBox');
@@ -16,13 +16,22 @@ export function initUI(onRestart, onStart, onStartAI) {
     closeSpeedModal = document.getElementById('closeSpeedModal');
     countdownElem = document.getElementById('countdown');
     startOverlay = document.getElementById('startOverlay');
-    startButton = document.getElementById('startButton');
-    startAIButton = document.getElementById('startAIButton');
     toast = document.getElementById('toast');
 
     restartButton.addEventListener('click', onRestart);
-    startButton.addEventListener('click', onStart);
-    startAIButton.addEventListener('click', onStartAI);
+
+    // Auto-start button (auto-detect mode)
+    const autoStartBtn = document.getElementById('autoStartBtn');
+    if (autoStartBtn && typeof onAutoStart === 'function') {
+        autoStartBtn.addEventListener('click', onAutoStart);
+    }
+
+    // Manual player count selection
+    const buttons = Array.from(document.querySelectorAll('.player-count'));
+    buttons.forEach(btn => btn.addEventListener('click', () => {
+        const n = Number(btn.dataset.count || '0');
+        if (typeof onSelectPlayers === 'function') onSelectPlayers(n);
+    }));
 
     speedButton.addEventListener('click', () => speedModal.classList.remove('hidden'));
     closeSpeedModal.addEventListener('click', () => speedModal.classList.add('hidden'));

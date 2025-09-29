@@ -152,6 +152,8 @@ while [ $# -gt 0 ]; do
         watch_pongo_css_bg
         echo "Starting main server in watch mode..."
         ensure_ngrok_3000 || true
+        # Open browser after a short delay to let server start
+        (sleep 2 && open http://localhost:3000) &
         exec bash -lc "cd server && DEBUG_GAME=1 NODE_ENV=development npm run dev"
         ;;
 

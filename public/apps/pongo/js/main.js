@@ -21,30 +21,59 @@ function getRoomId() {
     }
 }
 
+function resizeCanvas() {
+    // Get the container width
+    const container = canvas.parentElement;
+    const containerWidth = container.clientWidth;
+
+    // Maintain 4:3 aspect ratio
+    const aspectRatio = 4 / 3;
+    const maxWidth = Math.min(containerWidth, 1024); // Max width 1024px
+    const maxHeight = window.innerHeight * 0.6; // Max 60% of viewport height
+
+    let width = maxWidth;
+    let height = width / aspectRatio;
+
+    // If height is too tall, constrain by height instead
+    if (height > maxHeight) {
+        height = maxHeight;
+        width = height * aspectRatio;
+    }
+
+    canvas.width = width;
+    canvas.height = height;
+}
+
 function init() {
-    canvas.width = 800;
-    canvas.height = 600;
+    // Set canvas size responsively
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
 
     const q = new URLSearchParams(location.search);
     const mode = (q.get('mode') || '').toLowerCase();
     const ai = q.get('ai');
     const aiRequested = (mode === 'ai') || (ai === '1') || (ai === 'true');
-    useMultiplayer = !aiRequested;
 
     const urlDebug = /[?&]debug=1/.test(location.search);
     const isLocalDev = ['localhost', '127.0.0.1'].includes(location.hostname);
     const DEBUG_MP = urlDebug || (localStorage.getItem('DEBUG_MP') === '1') || isLocalDev;
 
     initGame(canvas, ctx);
-    initUI(restartGame, startMultiplayer, startSinglePlayer);
+    initUI(restartGame, (n)=>selectPlayers(n), ()=>autoDetectMode());
     initAudio();
     initMultiplayer(DEBUG_MP);
 
-    if (useMultiplayer) {
-        setupSocket(getRoomId());
-        // Auto-start render loop for multiplayer so paddles/ball draw without a click
-        try { hideStartOverlay(); } catch {}
-        gameRunning = true;
+    // Optional URL override: ?players=1..4 or mode=ai
+    const playersParam = Number(q.get('players') || 0);
+    if (aiRequested) {
+        // Explicit AI mode requested
+        startSinglePlayer();
+    } else if (playersParam) {
+        // Explicit player count requested
+        selectPlayers(playersParam);
+    } else {
+        // Auto-detect: join room and let server tell us if we're alone or not
+        autoDetectMode();
     }
 
     // Mouse movement for player paddle
@@ -89,15 +118,56 @@ function startSinglePlayer() {
     useMultiplayer = false;
     hideStartOverlay();
     gameRunning = true;
-    showToast("Single player mode started");
+    showToast("Single player mode (vs AI)");
 }
 
-function startMultiplayer() {
+function startMultiplayer(n = 2) {
     useMultiplayer = true;
-    setupSocket(getRoomId());
+    setupSocket(getRoomId(), { maxPlayers: Math.max(2, Math.min(4, Number(n)||2)) });
     hideStartOverlay();
     gameRunning = true;
-    showToast("Multiplayer mode started");
+    const playerCount = Math.max(2, Math.min(4, Number(n)||2));
+    showToast(`Multiplayer mode (${playerCount} player${playerCount > 1 ? 's' : ''})`);
+}
+
+function selectPlayers(n) {
+    if (Number(n) === 1) startSinglePlayer();
+    else startMultiplayer(n);
+}
+
+function autoDetectMode() {
+    // Join the room first to see if anyone is there
+    let hasStarted = false;
+
+    setupSocket(getRoomId(), {
+        autoDetect: true,
+        onRoomState: (state) => {
+            // state will contain: { playerCount, isAlone, newPlayer }
+            if (!hasStarted) {
+                // Initial join
+                if (state.isAlone) {
+                    // Nobody else in room, start in AI mode
+                    useMultiplayer = false;
+                    hideStartOverlay();
+                    gameRunning = true;
+                    showToast("Playing vs AI (waiting for opponent...)");
+                } else {
+                    // Someone else is here, start in multiplayer
+                    useMultiplayer = true;
+                    hideStartOverlay();
+                    gameRunning = true;
+                    showToast("Multiplayer mode");
+                }
+                hasStarted = true;
+            } else if (state.newPlayer && !state.isAlone) {
+                // Someone joined while we were playing AI
+                if (!useMultiplayer) {
+                    useMultiplayer = true;
+                    showToast("Opponent joined! Switching to multiplayer");
+                }
+            }
+        }
+    });
 }
 
 // Initialize the game when the script is loaded
