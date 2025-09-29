@@ -45,10 +45,19 @@ canvas {
 }
 /* Minimal utility replacements so UI works without Tailwind */
 .hidden { display: none !important; }
-#startOverlay, #messageBox, #speedModal {
+#startOverlay {
     position: fixed;
     inset: 0;
-    display: none; /* toggled by .hidden */
+    display: flex; /* Show by default */
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    background-color: rgba(0, 0, 0, 0.7);
+}
+#messageBox, #speedModal {
+    position: fixed;
+    inset: 0;
+    display: none; /* Hidden by default */
     align-items: center;
     justify-content: center;
     z-index: 50;

@@ -22,6 +22,8 @@ function getRoomId() {
 }
 
 function init() {
+    console.log('[main] init() called');
+
     // Fixed internal resolution - CSS will scale it
     canvas.width = 800;
     canvas.height = 600;
@@ -40,6 +42,13 @@ function init() {
             player.y = evt.clientY - rect.top - player.height / 2;
         }
     });
+
+    // Check if start overlay exists
+    const startOverlay = document.getElementById('startOverlay');
+    const startButton = document.getElementById('startButton');
+    console.log('[main] Start overlay exists:', !!startOverlay, 'visible:', startOverlay ? !startOverlay.classList.contains('hidden') : false);
+    console.log('[main] Start button exists:', !!startButton);
+    console.log('[main] gameRunning:', gameRunning);
 
     gameLoop();
 }
