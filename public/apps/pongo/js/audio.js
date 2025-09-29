@@ -72,7 +72,7 @@ class AudioSystem {
     }
 
     play(sound, ...args) {
-        if (!audioReady || isMuted || !this.sounds[sound]) return;
+        if (!this.sounds[sound] || isMuted) return;
         
         try {
             switch(sound) {
@@ -97,24 +97,43 @@ class AudioSystem {
 
 export async function initAudio() {
     try {
+        console.log('[audio] Starting audio initialization...');
         await loadTone();
+        console.log('[audio] Tone.js loaded, context state:', Tone.context.state);
+
         if (Tone.context.state !== 'running') {
+            console.log('[audio] Starting Tone context...');
             await Tone.start();
+            console.log('[audio] Tone context started, state:', Tone.context.state);
         }
-        audioSystem = new AudioSystem();
+
+        if (!audioSystem) {
+            console.log('[audio] Creating AudioSystem...');
+            audioSystem = new AudioSystem();
+            console.log('[audio] AudioSystem created');
+        }
+
         audioReady = true;
-        console.log("Audio system initialized.");
+        console.log("[audio] ✓ Audio system fully initialized and ready");
+        return true;
     } catch (e) {
-        console.warn("Could not initialize audio:", e);
+        console.error("[audio] ✗ Could not initialize audio:", e);
         audioReady = false;
+        return false;
     }
-    return audioReady;
 }
 
 export function playSound(sound, ...args) {
-    if (audioSystem) {
-        audioSystem.play(sound, ...args);
+    if (!audioReady) {
+        console.warn(`[audio] Cannot play '${sound}' - audio not ready`);
+        return;
     }
+    if (!audioSystem) {
+        console.warn(`[audio] Cannot play '${sound}' - audioSystem not initialized`);
+        return;
+    }
+    console.log(`[audio] Playing sound: ${sound}`);
+    audioSystem.play(sound, ...args);
 }
 
 export function toggleMute() {

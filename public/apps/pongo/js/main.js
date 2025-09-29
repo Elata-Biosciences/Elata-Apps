@@ -30,7 +30,7 @@ function init() {
 
     initGame(canvas, ctx);
     initUI(restartGame, startGame);
-    initAudio();
+    // Don't init audio here - wait for user gesture in startGame()
     initMultiplayer(isLocalDev);
 
     // Mouse movement for player paddle
@@ -63,17 +63,26 @@ function gameLoop(now) {
     animationFrameId = requestAnimationFrame(gameLoop);
 }
 
-function startGame() {
-    // First, try to initialize audio, which requires a user gesture
-    initAudio().then(success => {
-        if (!success) {
-            showToast("Audio could not be initialized.");
-        }
-        // Whether audio succeeded or not, hide the overlay and start the game
-        hideStartOverlay();
-        gameRunning = true;
-        startSinglePlayer();
-    });
+async function startGame() {
+    console.log('[main] startGame() called');
+
+    const startButton = document.getElementById('startButton');
+    if (startButton) {
+        startButton.disabled = true;
+        startButton.textContent = 'Loading...';
+    }
+
+    console.log('[main] Initializing audio...');
+    const audioInitialized = await initAudio();
+    console.log('[main] Audio initialized:', audioInitialized);
+
+    if (!audioInitialized) {
+        showToast("Audio could not be initialized.");
+    }
+
+    hideStartOverlay();
+    gameRunning = true;
+    startSinglePlayer();
 }
 
 function restartGame() {
