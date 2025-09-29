@@ -113,6 +113,11 @@ function selectPlayers(n) {
 }
 
 function autoDetectMode() {
+    // This is now the default action for the main start button
+    hideStartOverlay();
+    gameRunning = true;
+    showToast("Connecting to server...");
+
     // Join the room first to see if anyone is there
     let hasStarted = false;
 
@@ -125,14 +130,10 @@ function autoDetectMode() {
                 if (state.isAlone) {
                     // Nobody else in room, start in AI mode
                     useMultiplayer = false;
-                    hideStartOverlay();
-                    gameRunning = true;
                     showToast("Playing vs AI (waiting for opponent...)");
                 } else {
                     // Someone else is here, start in multiplayer
                     useMultiplayer = true;
-                    hideStartOverlay();
-                    gameRunning = true;
                     showToast("Multiplayer mode");
                 }
                 hasStarted = true;
