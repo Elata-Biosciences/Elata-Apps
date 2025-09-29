@@ -11,16 +11,16 @@
 </head>
 <body class="flex flex-col items-center justify-start min-h-screen p-2 sm:p-4 overflow-x-hidden">
 
-    <h1 class="text-2xl sm:text-4xl my-2 sm:mb-3 title">PONG</h1>
+    <h1 class="text-3xl sm:text-4xl my-2 sm:mb-3 title">PONG</h1>
 
-    <div class="flex w-full max-w-5xl justify-around mb-2 sm:mb-3 px-4">
+    <div class="flex w-full justify-around mb-2 sm:mb-3 px-4" style="max-width: min(90vw, 800px);">
         <div class="text-center">
-            <h2 class="text-base sm:text-xl score-label">PLAYER</h2>
-            <p id="player-score" class="text-3xl sm:text-5xl score">0</p>
+            <h2 class="text-sm sm:text-lg score-label">PLAYER</h2>
+            <p id="player-score" class="text-2xl sm:text-4xl score">0</p>
         </div>
         <div class="text-center">
-            <h2 class="text-base sm:text-xl score-label">COMPUTER</h2>
-            <p id="computer-score" class="text-3xl sm:text-5xl score">0</p>
+            <h2 class="text-sm sm:text-lg score-label">COMPUTER</h2>
+            <p id="computer-score" class="text-2xl sm:text-4xl score">0</p>
         </div>
     </div>
 
@@ -30,11 +30,11 @@
         <button id="restartGameButton" class="restart-btn py-1 px-3 sm:py-2 sm:px-4 rounded-lg text-xs sm:text-sm ml-2">Restart</button>
     </div>
 
-    <div class="w-full max-w-5xl px-2 sm:px-4" style="position: relative;">
-        <canvas id="pongCanvas" class="w-full" style="display: block; max-width: 100%;"></canvas>
+    <div class="w-full px-2 sm:px-4" style="position: relative; max-width: min(90vw, 800px); margin: 0 auto;">
+        <canvas id="pongCanvas" style="display: block; width: 100%; height: auto; max-width: 800px;"></canvas>
         <button id="muteButton" class="text-white text-2xl sm:text-3xl" style="position:absolute; top:8px; right:8px; opacity:0.75;">🔊</button>
         <!-- Countdown Display over canvas -->
-        <div id="countdown" style="position:absolute; inset:0; display:none; color:white; font-weight:700; font-size:clamp(4rem, 15vw, 9rem); z-index:40; text-shadow: 0 0 20px #00ffff; align-items:center; justify-content:center;">
+        <div id="countdown" style="position:absolute; inset:0; display:none; color:white; font-weight:700; font-size:clamp(3rem, 12vw, 7rem); z-index:40; text-shadow: 0 0 20px #00ffff; align-items:center; justify-content:center;">
         </div>
     </div>
 
@@ -64,8 +64,8 @@
 
 
     <!-- Custom Message Box -->
-    <div id="messageBox" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center">
-        <div class="message-box rounded-lg p-8 text-center">
+    <div id="messageBox" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+        <div class="message-box rounded-lg p-8 text-center max-w-md">
             <p id="messageText" class="text-2xl mb-6 text-white" style="text-shadow: 0 0 10px #00ffff;"></p>
             <button id="restartButton" class="restart-btn py-3 px-6 rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50">
                 Play Again
@@ -73,15 +73,16 @@
         </div>
     </div>
 
-    <!-- Speed Control Modal -->
-    <div id="speedModal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
-        <div class="message-box rounded-lg p-8 text-center">
-            <label for="speedSlider" class="score-label text-2xl mb-4 block">Ball Speed</label>
-            <div class="mt-2 flex flex-col items-center justify-center gap-4">
-                <input id="speedSlider" type="range" min="0.5" max="2.0" step="0.05" value="1.0" class="w-full max-w-xs">
-                <span id="speedValue" class="score text-2xl">1.00x</span>
+    <!-- Speed Modal -->
+    <div id="speedModal" class="fixed inset-0 bg-black bg-opacity-70 items-center justify-center z-50" style="display: none;">
+        <div class="message-box rounded-lg p-8 text-center max-w-md">
+            <h3 class="text-xl mb-6 text-white" style="text-shadow: 0 0 10px #00ffff;">Set Ball Speed</h3>
+            <div class="grid grid-cols-3 gap-3">
+                <button class="restart-btn py-3 rounded-lg focus:outline-none speed-choice" data-speed="0.7">Slow</button>
+                <button class="restart-btn py-3 rounded-lg focus:outline-none speed-choice" data-speed="1.0">Normal</button>
+                <button class="restart-btn py-3 rounded-lg focus:outline-none speed-choice" data-speed="1.3">Fast</button>
             </div>
-            <button id="closeSpeedModal" class="restart-btn mt-6 py-2 px-6 rounded-lg">Close</button>
+            <button id="closeSpeedModal" class="mt-6 text-white/70 text-sm">Close</button>
         </div>
     </div>
 

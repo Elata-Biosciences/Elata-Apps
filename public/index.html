@@ -32,7 +32,7 @@
     body {
       margin: 0;
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: var(--gradient-bg);
+      background: var(--bg-primary);
       color: var(--text-primary);
       line-height: 1.6;
       min-height: 100vh;
@@ -52,19 +52,12 @@
     }
     
     .logo {
-      display: inline-flex;
-      align-items: center;
-      gap: 12px;
+      display: inline-block;
       font-weight: 800;
       font-size: 24px;
       color: var(--accent-primary);
       margin-bottom: 16px;
       text-decoration: none;
-    }
-    
-    .logo::before {
-      content: "⚡";
-      font-size: 28px;
     }
     
     h1 {
@@ -73,280 +66,279 @@
       font-size: clamp(2rem, 4vw, 3rem);
       letter-spacing: -0.02em;
       background: var(--gradient-primary);
-      background-clip: text;
       -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      color: transparent;
     }
     
     .lead {
-      margin: 0;
+      margin: 0 auto;
       font-size: 18px;
       color: var(--text-secondary);
       max-width: 600px;
-      margin: 0 auto;
     }
     
-    .subtitle {
-      font-size: 14px;
-      color: var(--text-muted);
-      margin-top: 8px;
-      font-weight: 500;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+    main {
+      padding-bottom: 64px;
     }
-    
+
+    .section-title {
+      font-size: 28px;
+      font-weight: 700;
+      margin: 0 0 32px;
+      color: var(--text-primary);
+      border-bottom: 1px solid var(--border-secondary);
+      padding-bottom: 16px;
+    }
+
+    /* Featured Section */
+    .featured-container {
+      margin-bottom: 64px;
+    }
+
+    .featured-card {
+      background: var(--bg-card);
+      border-radius: 16px;
+      border: 1px solid var(--border-primary);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      overflow: hidden;
+      box-shadow: var(--shadow-card);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .featured-card:hover {
+      transform: translateY(-8px);
+      box-shadow: var(--shadow-card-hover);
+    }
+
+    .featured-content {
+      padding: 48px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .featured-tag {
+      display: inline-block;
+      background: var(--accent-tertiary);
+      color: var(--accent-primary);
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      align-self: flex-start;
+    }
+
+    .featured-title {
+      font-size: 36px;
+      font-weight: 700;
+      margin: 0 0 16px;
+    }
+
+    .featured-description {
+      font-size: 16px;
+      color: var(--text-secondary);
+      margin-bottom: 32px;
+    }
+
+    .featured-image-container {
+      position: relative;
+      min-height: 300px;
+    }
+
+    .featured-image {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-size: cover;
+      background-position: center;
+      border-left: 1px solid var(--border-primary);
+    }
+
+    /* Apps Grid */
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-      gap: 32px;
-      margin-bottom: 80px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
     }
     
     .card {
       background: var(--bg-card);
+      border-radius: 12px;
+      padding: 24px;
       border: 1px solid var(--border-primary);
-      border-radius: 16px;
-      padding: 32px;
-      box-shadow: var(--shadow-card);
-      transition: all 0.3s ease;
-      position: relative;
-      overflow: hidden;
+      text-decoration: none;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      transition: background-color 0.3s ease, transform 0.3s ease;
     }
-    
-    .card::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 4px;
-      background: var(--gradient-primary);
-      opacity: 0;
-      transition: opacity 0.3s ease;
-    }
-    
+
     .card:hover {
       background: var(--bg-card-hover);
-      box-shadow: var(--shadow-card-hover);
       transform: translateY(-4px);
-      border-color: var(--accent-tertiary);
+    }
+
+    .card-icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 12px;
+      background-color: var(--bg-secondary);
+      flex-shrink: 0;
+      background-size: cover;
+      background-position: center;
+    }
+
+    .card-content {
+      flex-grow: 1;
     }
     
-    .card:hover::before {
-      opacity: 1;
-    }
-    
-    .card h2 {
-      margin: 0 0 12px;
-      font-size: 24px;
+    .card-title {
+      margin: 0 0 4px;
+      font-size: 18px;
       font-weight: 600;
-      color: var(--text-primary);
     }
     
-    .card p {
-      margin: 0 0 24px;
-      color: var(--text-secondary);
-      font-size: 16px;
-      line-height: 1.5;
-    }
-    
-    .tags {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin: 0 0 24px;
-    }
-    
-    .tag {
-      font-size: 12px;
-      font-weight: 500;
-      padding: 6px 12px;
-      border-radius: 20px;
-      background: var(--accent-tertiary);
-      border: 1px solid var(--accent-secondary);
-      color: var(--accent-primary);
-      letter-spacing: 0.025em;
-    }
-    
-    .actions {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
+    .card-category {
+      margin: 0;
+      font-size: 14px;
+      color: var(--text-muted);
     }
     
     .btn {
-      appearance: none;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 12px 20px;
-      border-radius: 12px;
-      border: 1px solid var(--border-primary);
-      color: var(--text-primary);
+      display: inline-block;
+      padding: 10px 20px;
+      border-radius: 8px;
       text-decoration: none;
-      background: var(--bg-secondary);
-      font-weight: 500;
+      font-weight: 600;
       font-size: 14px;
-      transition: all 0.2s ease;
+      transition: all 0.3s ease;
+      border: none;
       cursor: pointer;
     }
-    
-    .btn.primary {
+
+    .btn-primary {
       background: var(--gradient-primary);
-      border-color: var(--accent-secondary);
       color: var(--bg-primary);
-      font-weight: 600;
     }
-    
-    .btn:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+
+    .btn-primary:hover {
+      filter: brightness(1.2);
+      transform: translateY(-2px);
     }
-    
-    .btn.primary:hover {
-      box-shadow: 0 4px 16px rgba(0, 212, 255, 0.3);
+
+    .btn-secondary {
+      background: var(--bg-secondary);
+      color: var(--text-secondary);
+      border: 1px solid var(--border-primary);
     }
-    
-    .btn:active {
-      transform: translateY(0);
+
+    .btn-secondary:hover {
+      background: var(--border-primary);
+      color: var(--text-primary);
     }
-    
+
+    .arrow {
+      display: inline-block;
+      transition: transform 0.3s ease;
+    }
+
+    .btn:hover .arrow {
+      transform: translateX(4px);
+    }
+
     footer {
-      padding: 32px 0 48px;
-      border-top: 1px solid var(--border-secondary);
       text-align: center;
-    }
-    
-    .footer-content {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 16px;
-    }
-    
-    .footer-links {
-      display: flex;
-      gap: 24px;
-      align-items: center;
-    }
-    
-    .footer-links a {
-      color: var(--text-muted);
-      text-decoration: none;
-      font-size: 14px;
-      transition: color 0.2s ease;
-    }
-    
-    .footer-links a:hover {
-      color: var(--accent-primary);
-    }
-    
-    .health-status {
+      padding: 32px 0;
+      margin-top: 48px;
+      border-top: 1px solid var(--border-secondary);
       color: var(--text-muted);
       font-size: 14px;
     }
-    
-    .health-status a {
-      color: var(--accent-primary);
-      text-decoration: none;
-    }
-    
+
     @media (max-width: 768px) {
-      .container {
-        padding: 0 16px;
+      .featured-card {
+        grid-template-columns: 1fr;
       }
-      
+      .featured-image-container {
+        order: -1;
+      }
+      .featured-image {
+        border-left: none;
+        border-bottom: 1px solid var(--border-primary);
+      }
+      .featured-content {
+        padding: 32px;
+      }
       .grid {
         grid-template-columns: 1fr;
-        gap: 24px;
-      }
-      
-      .card {
-        padding: 24px;
-      }
-      
-      .footer-content {
-        flex-direction: column;
-        text-align: center;
       }
     }
   </style>
 </head>
 <body>
-  <header>
     <div class="container">
-      <a href="https://www.elata.bio/" class="logo">Elata Apps</a>
-      <div class="subtitle">Mind & Gaming Apps</div>
-      <h1>Play with Your Mind</h1>
-      <p class="lead">Fun games and relaxing experiences that connect to your thoughts and feelings. No expertise needed – just plug in and play!</p>
+      <header>
+        <a href="#" class="logo">Elata Apps</a>
+        <h1>Neuroscience Application Suite</h1>
+        <p class="lead">A collection of applications designed to explore the intersection of gaming, wellness, and brain-computer interface technology.</p>
+      </header>
+
+      <main>
+        <section class="featured-container">
+          <div class="featured-card">
+            <div class="featured-content">
+              <span class="featured-tag">Featured Game</span>
+              <h2 class="featured-title">Pongo</h2>
+              <p class="featured-description">The classic arcade game, reimagined with neuro-feedback controls. Challenge the AI or go head-to-head in multiplayer.</p>
+              <a href="/apps/pongo/index.html" class="btn btn-primary">Launch Game <span class="arrow">→</span></a>
+            </div>
+            <div class="featured-image-container">
+              <div class="featured-image" style="background-image: url('/assets/pongo/pongo-screenshot.png');"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="apps-section">
+          <h2 class="section-title">All Applications</h2>
+          <div class="grid">
+            <div class="card">
+              <div class="card-icon" style="background-image: url('/assets/pongo/pongo-icon.png');"></div>
+              <div class="card-content">
+                <h3 class="card-title">Pongo</h3>
+                <p class="card-category">Game</p>
+              </div>
+              <a href="/apps/pongo/index.html" class="btn btn-secondary">Launch</a>
+            </div>
+            <div class="card">
+              <div class="card-icon" style="background-image: url('/assets/meditate/meditate-icon.png');"></div>
+              <div class="card-content">
+                <h3 class="card-title">Meditate</h3>
+                <p class="card-category">Wellness</p>
+              </div>
+              <a href="/apps/meditate.html" class="btn btn-secondary">Launch</a>
+            </div>
+            <div class="card">
+              <div class="card-icon" style="background-image: url('/assets/neurobloom/neurobloom-icon.png');"></div>
+              <div class="card-content">
+                <h3 class="card-title">NeuroBloom</h3>
+                <p class="card-category">Experimental</p>
+              </div>
+              <a href="/apps/neurobloom/" class="btn btn-secondary">Launch</a>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer>
+        <p>&copy; 2025 Elata Biosciences. All rights reserved.</p>
+      </footer>
     </div>
-  </header>
-
-  <main class="container">
-    <div class="grid">
-      <section class="card">
-        <h2>Pongo – Classic Pong Game</h2>
-        <p>Play the classic Pong game online with friends! Challenge someone to a match in this smooth, responsive version of the timeless arcade game. No downloads needed.</p>
-        <div class="tags">
-          <span class="tag">2 Players</span>
-          <span class="tag">Classic Game</span>
-          <span class="tag">Online Play</span>
-          <span class="tag">No Download</span>
-        </div>
-        <div class="actions">
-          <a class="btn primary" href="/pongo/default">Play Now</a>
-          <a class="btn" href="/docs/how-to-play-pong.html" target="_blank" rel="noopener">How to Play</a>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2>NeuroBloom – Mind Garden</h2>
-        <p>Watch beautiful plants grow and change as you relax and focus your mind. This peaceful experience helps you practice mindfulness while creating your own digital garden.</p>
-        <div class="tags">
-          <span class="tag">Relaxation</span>
-          <span class="tag">Mindfulness</span>
-          <span class="tag">Visual Art</span>
-          <span class="tag">Mind Training</span>
-        </div>
-        <div class="actions">
-          <a class="btn primary" href="/apps/neurobloom/index.html">Start Growing</a>
-          <a class="btn" href="/elata-eeg/scripts/README.md" target="_blank" rel="noopener">Setup Guide</a>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2>Mind-Assisted Pong</h2>
-        <p>Play Pong with a twist! When you're calm and focused, your paddle gets a gentle boost. It's a fun way to practice staying relaxed while gaming.</p>
-        <div class="tags">
-          <span class="tag">Mind + Game</span>
-          <span class="tag">Relaxation</span>
-          <span class="tag">Focus Training</span>
-          <span class="tag">Fun Challenge</span>
-        </div>
-        <div class="actions">
-          <a class="btn primary" href="/apps/neurobloom/neuro-pong.html">Try It Out</a>
-          <a class="btn" href="/elata-eeg/scripts/README.md" target="_blank" rel="noopener">Setup Guide</a>
-        </div>
-      </section>
-    </div>
-  </main>
-
-  <footer>
-    <div class="container">
-      <div class="footer-content">
-        <div class="footer-links">
-          <a href="https://www.elata.bio/" target="_blank" rel="noopener">About Elata</a>
-          <a href="https://github.com/Elata-Biosciences" target="_blank" rel="noopener">Open Source</a>
-          <a href="https://discord.com/invite/GqS9CstffK" target="_blank" rel="noopener">Community</a>
-          <a href="https://elata-biosciences.gitbook.io/elata/" target="_blank" rel="noopener">Help & Guides</a>
-        </div>
-        <div class="health-status">
-          All systems: <a href="/health">Running smoothly</a>
-        </div>
-      </div>
-    </div>
-  </footer>
 </body>
 </html>
 

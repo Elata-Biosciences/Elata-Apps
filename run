@@ -144,8 +144,9 @@ while [ $# -gt 0 ]; do
 
     dev)
         if lsof -ti:3000 > /dev/null; then
-        echo "Server is already running on port 3000. Use './run stop' first."
-        exit 0
+          echo "Server is already running on port 3000. Use './run stop' first."
+          open http://localhost:3000
+          exit 0
         fi
         ensure_deps "Pongo"
         ensure_deps "server"

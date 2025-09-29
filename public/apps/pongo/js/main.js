@@ -21,33 +21,10 @@ function getRoomId() {
     }
 }
 
-function resizeCanvas() {
-    // Get the container width
-    const container = canvas.parentElement;
-    const containerWidth = container.clientWidth;
-
-    // Maintain 4:3 aspect ratio
-    const aspectRatio = 4 / 3;
-    const maxWidth = Math.min(containerWidth, 1024); // Max width 1024px
-    const maxHeight = window.innerHeight * 0.6; // Max 60% of viewport height
-
-    let width = maxWidth;
-    let height = width / aspectRatio;
-
-    // If height is too tall, constrain by height instead
-    if (height > maxHeight) {
-        height = maxHeight;
-        width = height * aspectRatio;
-    }
-
-    canvas.width = width;
-    canvas.height = height;
-}
-
 function init() {
-    // Set canvas size responsively
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
+    // Fixed internal resolution - CSS will scale it
+    canvas.width = 800;
+    canvas.height = 600;
 
     const q = new URLSearchParams(location.search);
     const mode = (q.get('mode') || '').toLowerCase();
