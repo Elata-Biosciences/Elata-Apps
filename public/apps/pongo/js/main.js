@@ -35,11 +35,13 @@ function init() {
     // Don't init audio here - wait for user gesture in startGame()
     initMultiplayer(isLocalDev);
 
-    // Mouse movement for player paddle
+    // Mouse movement for player paddle (now horizontal)
     canvas.addEventListener('mousemove', (evt) => {
         if (!useMultiplayer) {
             let rect = canvas.getBoundingClientRect();
-            player.y = evt.clientY - rect.top - player.height / 2;
+            player.x = evt.clientX - rect.left - player.width / 2;
+            // Keep player paddle within bounds
+            player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
         }
     });
 
