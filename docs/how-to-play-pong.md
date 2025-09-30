@@ -10,18 +10,18 @@ Welcome to Pongo - the classic Pong game you can play online with friends!
 
 ## 🕹️ Controls
 
-### Player 1 (Left Paddle)
-- **W** = Move paddle up
-- **S** = Move paddle down
+### Player 1 (Bottom Paddle)
+- **A** = Move paddle left
+- **D** = Move paddle right
 
-### Player 2 (Right Paddle)  
-- **↑ Arrow Key** = Move paddle up
-- **↓ Arrow Key** = Move paddle down
+### Player 2 (Top Paddle)  
+- **← Arrow Key** = Move paddle left
+- **→ Arrow Key** = Move paddle right
 
 ## 🎯 How to Win
 
 - **Hit the ball** with your paddle to send it back to your opponent
-- **Score points** when the ball gets past your opponent's paddle
+- **Score points** when the ball gets past your opponent's paddle (exits top/bottom)
 - **First to reach the target score wins!**
 
 ## 🎨 Game Features

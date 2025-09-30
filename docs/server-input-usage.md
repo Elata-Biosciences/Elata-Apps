@@ -31,28 +31,28 @@ Two message shapes are supported. Use what fits your input device.
 
 1) Absolute position (normalized)
 ```js
-// 0 = top, 1 = bottom
-const y = 0.85;
-game.emit('input', { roomId: 'arena-1', paddleY: y });
+// 0 = left, 1 = right
+const x = 0.85;
+game.emit('input', { roomId: 'arena-1', paddleX: x });
 ```
 
 2) Directional step (keyboard/controller)
 ```js
-// Up/down movement by step amount (default step is 0.04 if omitted)
-game.emit('input', { roomId: 'arena-1', dir: 'up', step: 0.05 });
-game.emit('input', { roomId: 'arena-1', dir: 'down' });
+// Left/right movement by step amount (default step is 0.04 if omitted)
+game.emit('input', { roomId: 'arena-1', dir: 'left', step: 0.05 });
+game.emit('input', { roomId: 'arena-1', dir: 'right' });
 ```
 
 ## Observe state and peer input
 
 ```js
 game.on('state', (s) => {
-  // s.paddles.left/right in [0,1]
+  // s.paddles.top/bottom in [0,1]
   // s.ball.x/y in [0,1]
 });
 
 game.on('input', (msg) => {
-  // peer input relay: { side, paddleY, dir? }
+  // peer input relay: { side, paddleX, dir? }
 });
 ```
 
@@ -60,8 +60,8 @@ game.on('input', (msg) => {
 
 ```js
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'ArrowUp' || e.key === 'w') game.emit('input', { roomId: 'arena-1', dir: 'up' });
-  if (e.key === 'ArrowDown' || e.key === 's') game.emit('input', { roomId: 'arena-1', dir: 'down' });
+  if (e.key === 'ArrowLeft' || e.key === 'a') game.emit('input', { roomId: 'arena-1', dir: 'left' });
+  if (e.key === 'ArrowRight' || e.key === 'd') game.emit('input', { roomId: 'arena-1', dir: 'right' });
 });
 ```
 
