@@ -183,6 +183,8 @@ function createInitialGameState(id) {
     players: new Map(), // socketId -> { name, side, inputs: [] }
     sides: { left: null, right: null },
     spectators: new Set(),
+    // Optional: additional controllers per side (spectators that can send input)
+    controllers: { left: new Set(), right: new Set() },
     paddles: {
       left: { y: 0.5 },
       right: { y: 0.5 }
@@ -559,12 +561,21 @@ game.on('connection', (socket) => {
 
   // Backward compatible input handler + queued input with rate limiting
   socket.on('input', (payload = {}) => {
-    if (!roomId || !side) return;
+    if (!roomId) return;
     const room = rooms.get(roomId);
     if (!room) return;
+
+    // Determine which side this input targets
+    let targetSide = side; // player's own side if assigned
+    if (!targetSide) {
+      const pSide = String(payload.side || payload.player || '').toLowerCase();
+      if (pSide === 'left' || pSide === 'right') targetSide = pSide;
+    }
+    if (targetSide !== 'left' && targetSide !== 'right') return;
+
     const player = room.players.get(socket.id);
 
-    // Helper: token-bucket rate limit per player
+    // Helper: token-bucket rate limit per player (only if this is a seated player)
     const now = Date.now();
     const rl = player && player.rl;
     if (rl) {
@@ -573,7 +584,7 @@ game.on('connection', (socket) => {
       rl.tokens = Math.min(INPUT_BURST, rl.tokens + elapsed * INPUTS_PER_SEC);
     }
 
-    // New model: queued move input with seq
+    // New model: queued move input with seq (players only)
     const hasSeq = Number.isFinite(Number(payload.seq));
     if (player && hasSeq && (payload.action === 'move') && (payload.direction === 'up' || payload.direction === 'down')) {
       if (rl && rl.tokens < 1) return; // drop if over rate
@@ -588,13 +599,12 @@ game.on('connection', (socket) => {
       return;
     }
 
-
     // Legacy: absolute paddle position from client (clamped)
     const y = Number(payload.paddleY);
     if (Number.isFinite(y)) {
       const clampY = Math.max(PADDLE_HEIGHT / 2, Math.min(1 - PADDLE_HEIGHT / 2, y));
-      room.paddles[side].y = clampY;
-      socket.to(roomId).emit('input', { side, paddleY: clampY });
+      room.paddles[targetSide].y = clampY;
+      socket.to(roomId).emit('input', { side: targetSide, paddleY: clampY });
       return;
     }
 
@@ -605,10 +615,10 @@ game.on('connection', (socket) => {
         if (rl && rl.tokens < 1) return; // rate limit legacy too
         const step = Number.isFinite(payload.step) ? Math.max(0, Math.min(0.2, Number(payload.step))) : 0.04;
         const dy = d === 'up' ? -step : step;
-        const current = room.paddles[side].y;
+        const current = room.paddles[targetSide].y;
         const next = Math.max(PADDLE_HEIGHT / 2, Math.min(1 - PADDLE_HEIGHT / 2, current + dy));
-        room.paddles[side].y = next;
-        socket.to(roomId).emit('input', { side, paddleY: next, dir: d });
+        room.paddles[targetSide].y = next;
+        socket.to(roomId).emit('input', { side: targetSide, paddleY: next, dir: d });
         if (rl) rl.tokens -= 1;
       }
       return;
