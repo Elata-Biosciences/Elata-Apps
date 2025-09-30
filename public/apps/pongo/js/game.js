@@ -2,8 +2,8 @@
 import { playSound } from './audio.js';
 
 // Game constants
-const PADDLE_WIDTH = 15;
-const PADDLE_HEIGHT = 100;
+const PADDLE_WIDTH = 100;  // Now horizontal width
+const PADDLE_HEIGHT = 15;  // Now horizontal height
 const BALL_RADIUS = 10;
 const WINNING_SCORE = 5;
 const PADDLE_COLOR = '#00ffff';
@@ -52,8 +52,11 @@ let canvas, ctx;
 export function initGame(canvasElement, context) {
     canvas = canvasElement;
     ctx = context;
-    player.x = PADDLE_WIDTH;
-    computer.x = canvas.width - (PADDLE_WIDTH * 2);
+    // Position paddles horizontally - player at bottom, computer at top
+    player.y = canvas.height - (PADDLE_HEIGHT * 2);
+    player.x = canvas.width / 2 - PADDLE_WIDTH / 2;
+    computer.y = PADDLE_HEIGHT;
+    computer.x = canvas.width / 2 - PADDLE_WIDTH / 2;
     resetBall();
 }
 
@@ -61,51 +64,54 @@ export function resetBall() {
     ball.x = canvas.width / 2;
     ball.y = canvas.height / 2;
     ball.speed = 7;
+    // Ball now moves vertically - X velocity is random, Y velocity determines direction
     ball.velocityX = (Math.random() > 0.5 ? 1 : -1) * 5;
     ball.velocityY = (Math.random() > 0.5 ? 1 : -1) * 5;
 }
 
 export function updateGame(useAI) {
     if (useAI) {
-        // AI paddle movement
-        let targetY = ball.y - computer.height / 2;
-        computer.y += (targetY - computer.y) * 0.1;
+        // AI paddle movement - now horizontal movement following ball X position
+        let targetX = ball.x - computer.width / 2;
+        computer.x += (targetX - computer.x) * 0.1;
+        // Keep computer paddle within bounds
+        computer.x = Math.max(0, Math.min(canvas.width - computer.width, computer.x));
     }
 
     // Ball movement
     ball.x += ball.velocityX * speedMultiplier;
     ball.y += ball.velocityY * speedMultiplier;
 
-    // Ball collision with top/bottom walls
-    if (ball.y + ball.radius > canvas.height || ball.y - ball.radius < 0) {
-        ball.velocityY = -ball.velocityY;
+    // Ball collision with left/right walls (now bounces horizontally)
+    if (ball.x + ball.radius > canvas.width || ball.x - ball.radius < 0) {
+        ball.velocityX = -ball.velocityX;
         playSound('wallBounce');
     }
 
-    // Ball collision with paddles
-    let paddle = (ball.x < canvas.width / 2) ? player : computer;
+    // Ball collision with paddles (now top/bottom paddles)
+    let paddle = (ball.y < canvas.height / 2) ? computer : player;
     if (collision(ball, paddle)) {
         playSound('paddleHit');
-        let collidePoint = (ball.y - (paddle.y + paddle.height / 2));
-        collidePoint = collidePoint / (paddle.height / 2);
+        let collidePoint = (ball.x - (paddle.x + paddle.width / 2));
+        collidePoint = collidePoint / (paddle.width / 2);
         let angleRad = (Math.PI / 4) * collidePoint;
-        let direction = (ball.x < canvas.width / 2) ? 1 : -1;
-        ball.velocityX = direction * ball.speed * Math.cos(angleRad);
-        ball.velocityY = ball.speed * Math.sin(angleRad);
+        let direction = (ball.y < canvas.height / 2) ? 1 : -1;
+        ball.velocityY = direction * ball.speed * Math.cos(angleRad);
+        ball.velocityX = ball.speed * Math.sin(angleRad);
         ball.speed += SPEED_INCREMENT;
         if (ball.speed > 7 * MAX_SPEED_MULTIPLIER) {
             ball.speed = 7 * MAX_SPEED_MULTIPLIER;
         }
     }
 
-    // Scoring
-    if (ball.x - ball.radius < 0) {
-        computer.score++;
-        playSound('computerScore');
-        resetBall();
-    } else if (ball.x + ball.radius > canvas.width) {
-        player.score++;
+    // Scoring (now when ball exits top/bottom)
+    if (ball.y - ball.radius < 0) {
+        player.score++;  // Player scores when ball exits top
         playSound('playerScore');
+        resetBall();
+    } else if (ball.y + ball.radius > canvas.height) {
+        computer.score++; // Computer scores when ball exits bottom
+        playSound('computerScore');
         resetBall();
     }
 }
@@ -140,9 +146,10 @@ export function draw() {
 }
 
 function drawNet() {
-    for (let i = 0; i < canvas.height; i += 30) {
+    // Draw horizontal net across the middle
+    for (let i = 0; i < canvas.width; i += 30) {
         ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-        ctx.fillRect(canvas.width / 2 - 1, i, 2, 15);
+        ctx.fillRect(i, canvas.height / 2 - 1, 15, 2);
     }
 }
 

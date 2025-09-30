@@ -3,14 +3,15 @@ import { showMessage, hideMessage, updateCountdown, hideCountdown, hideStartOver
 
 let sock = null;
 let side = null;
-let upTimer = null;
-let downTimer = null;
+let leftTimer = null;
+let rightTimer = null;
 let mySeq = 0;
 const pending = [];
 let TICK_RATE = 30;
 let PADDLE_SPEED = 0.5;
 let DT = 1 / TICK_RATE;
 let PADDLE_HEIGHT_NORM = 0.2;
+let PADDLE_WIDTH_NORM = 0.2;
 let DEBUG_MP = false;
 
 const STATE_BUFFER = [];
@@ -24,7 +25,7 @@ let __lastPendingLog = -1;
 const EASE_MS = 90; // ~90ms exponential approach for local paddle
 const PADDLE_JUMP_FRAC = 0.12; // 12% of canvas height
 const BALL_JUMP_FRAC = 0.18;   // 18% of canvas diagonal
-const RENDER = { lastNow: 0, lastBall: { x: null, y: null }, lastSelfY: null };
+const RENDER = { lastNow: 0, lastBall: { x: null, y: null }, lastSelfX: null };
 
 function dbg(event, data) {
   if (!DEBUG_MP) return;
@@ -34,13 +35,13 @@ function dbg(event, data) {
   } catch {}
 }
 
-let SELF_BASE = null; // { selfY, ackSeq, side, _at }
+let SELF_BASE = null; // { selfX, ackSeq, side, _at }
 function onRectify(msg){
   try {
-    const y = Number(msg && msg.selfY);
+    const x = Number(msg && msg.selfX);
     const ack = Number(msg && msg.ackSeq);
-    if (Number.isFinite(y)) {
-      SELF_BASE = { selfY: Math.max(0, Math.min(1, y)), ackSeq: Number.isFinite(ack)?ack:0, side: msg.side, _at: performance.now(), serverT: Number(msg && msg.t) };
+    if (Number.isFinite(x)) {
+      SELF_BASE = { selfX: Math.max(0, Math.min(1, x)), ackSeq: Number.isFinite(ack)?ack:0, side: msg.side, _at: performance.now(), serverT: Number(msg && msg.t) };
     }
     if (Number.isFinite(ack)) {
       for (let i = pending.length - 1; i >= 0; i--) {
@@ -85,8 +86,9 @@ function loadServerConfig() {
             if (cfg && typeof cfg.TICK_RATE === 'number') TICK_RATE = cfg.TICK_RATE;
             if (cfg && typeof cfg.PADDLE_SPEED === 'number') PADDLE_SPEED = cfg.PADDLE_SPEED;
             if (cfg && typeof cfg.PADDLE_HEIGHT === 'number') PADDLE_HEIGHT_NORM = cfg.PADDLE_HEIGHT;
+            if (cfg && typeof cfg.PADDLE_WIDTH === 'number') PADDLE_WIDTH_NORM = cfg.PADDLE_WIDTH;
             DT = 1 / TICK_RATE;
-            if (DEBUG_MP) console.log('[mp] config', { TICK_RATE, PADDLE_SPEED, PADDLE_HEIGHT_NORM });
+            if (DEBUG_MP) console.log('[mp] config', { TICK_RATE, PADDLE_SPEED, PADDLE_HEIGHT_NORM, PADDLE_WIDTH_NORM });
         })
         .catch(e => {
             if (DEBUG_MP) console.warn('[mp] config fetch failed', e);
@@ -101,26 +103,26 @@ function sendMove(direction) {
 }
 
 function startRepeat(dir) {
-    if ((dir === 'up' && upTimer) || (dir === 'down' && downTimer)) return;
+    if ((dir === 'left' && leftTimer) || (dir === 'right' && rightTimer)) return;
     const send = () => sendMove(dir);
-    if (dir === 'up') {
-        upTimer = setInterval(send, 60);
+    if (dir === 'left') {
+        leftTimer = setInterval(send, 60);
         send();
     }
-    if (dir === 'down') {
-        downTimer = setInterval(send, 60);
+    if (dir === 'right') {
+        rightTimer = setInterval(send, 60);
         send();
     }
 }
 
 function stopRepeat(dir) {
-    if (dir === 'up' && upTimer) {
-        clearInterval(upTimer);
-        upTimer = null;
+    if (dir === 'left' && leftTimer) {
+        clearInterval(leftTimer);
+        leftTimer = null;
     }
-    if (dir === 'down' && downTimer) {
-        clearInterval(downTimer);
-        downTimer = null;
+    if (dir === 'right' && rightTimer) {
+        clearInterval(rightTimer);
+        rightTimer = null;
     }
 }
 
@@ -178,28 +180,28 @@ export function stepMultiplayer(now, player, computer, ball, canvas) {
     const t = Math.max(0, Math.min(1, (targetServerT - a.t) / span));
     const lerp = (x0, x1) => x0 + (x1 - x0) * t;
 
-    // Interpolated normalized state
-    const leftY = lerp(a.paddles.left, b.paddles.left);
-    const rightY = lerp(a.paddles.right, b.paddles.right);
+    // Interpolated normalized state - now using top/bottom instead of left/right
+    const topX = lerp(a.paddles.top, b.paddles.top);
+    const bottomX = lerp(a.paddles.bottom, b.paddles.bottom);
     const ballX = lerp(a.ball.x, b.ball.x);
     const ballY = lerp(a.ball.y, b.ball.y);
 
     // Predict local paddle from server baseline
     // Prefer server-provided self baseline when available (recent rectify), else use interpolated
     const isBaseFresh = (SELF_BASE && (Math.abs((Date.now() + SERVER_OFFSET_MS) - (Number(SELF_BASE.serverT)||0)) < 250));
-    let baseSelf = isBaseFresh ? SELF_BASE.selfY : (side === 'left' ? leftY : rightY);
-    let selfY = side ? applyPrediction(baseSelf) : baseSelf;
+    let baseSelf = isBaseFresh ? SELF_BASE.selfX : (side === 'top' ? topX : bottomX);
+    let selfX = side ? applyPrediction(baseSelf) : baseSelf;
 
-    const PADDLE_H = PADDLE_HEIGHT_NORM * canvas.height;
-    const localTarget = centerNormToPxTop(selfY, PADDLE_H, canvas.height);
-    const otherTargetLeft = centerNormToPxTop(leftY, PADDLE_H, canvas.height);
-    const otherTargetRight = centerNormToPxTop(rightY, PADDLE_H, canvas.height);
+    const PADDLE_W = PADDLE_WIDTH_NORM * canvas.width;
+    const localTarget = centerNormToPxLeft(selfX, PADDLE_W, canvas.width);
+    const otherTargetTop = centerNormToPxLeft(topX, PADDLE_W, canvas.width);
+    const otherTargetBottom = centerNormToPxLeft(bottomX, PADDLE_W, canvas.width);
 
     // Exponential smoothing for local paddle to hide corrections
     const dtMs = Math.max(0, now - (RENDER.lastNow || now));
     const alpha = 1 - Math.exp(-dtMs / EASE_MS);
-    if (RENDER.lastSelfY === null) RENDER.lastSelfY = localTarget;
-    RENDER.lastSelfY += (localTarget - RENDER.lastSelfY) * alpha;
+    if (RENDER.lastSelfX === null) RENDER.lastSelfX = localTarget;
+    RENDER.lastSelfX += (localTarget - RENDER.lastSelfX) * alpha;
 
     // Detect large jumps in ball position (teleports) and reset smoothing
     const ballPxX = normToPxX(ballX, canvas.width);
@@ -225,25 +227,25 @@ export function stepMultiplayer(now, player, computer, ball, canvas) {
     RENDER.lastBall.y += (ballPxY - RENDER.lastBall.y) * ballAlpha;
 
     // --- Write to scene ---
-    if (side === 'left') {
-        player.y = RENDER.lastSelfY;
-        computer.y = otherTargetRight;
-    } else if (side === 'right') {
-        player.y = RENDER.lastSelfY;
-        computer.y = otherTargetLeft;
+    if (side === 'bottom') {
+        player.x = RENDER.lastSelfX;
+        computer.x = otherTargetTop;
+    } else if (side === 'top') {
+        player.x = RENDER.lastSelfX;
+        computer.x = otherTargetBottom;
     }
     ball.x = RENDER.lastBall.x;
     ball.y = RENDER.lastBall.y;
     RENDER.lastNow = now;
 }
 
-function applyPrediction(baseY) {
-    let y = baseY;
+function applyPrediction(baseX) {
+    let x = baseX;
     for (const inp of pending) {
-        const dy = inp.direction === 'up' ? -PADDLE_SPEED * DT : PADDLE_SPEED * DT;
-        y = clamp(y + dy, 0 + PADDLE_HEIGHT_NORM / 2, 1 - PADDLE_HEIGHT_NORM / 2);
+        const dx = inp.direction === 'left' ? -PADDLE_SPEED * DT : PADDLE_SPEED * DT;
+        x = clamp(x + dx, 0 + PADDLE_WIDTH_NORM / 2, 1 - PADDLE_WIDTH_NORM / 2);
     }
-    return y;
+    return x;
 }
 
 export function setupSocket(roomId, opts = {}) {
@@ -304,19 +306,19 @@ export function setupSocket(roomId, opts = {}) {
 
     window.addEventListener('keydown', (e) => {
         const k = e.key;
-        if (k === 'ArrowUp' || k === 'w' || k === 'W') {
-            startRepeat('up');
+        if (k === 'ArrowLeft' || k === 'a' || k === 'A') {
+            startRepeat('left');
             e.preventDefault();
         }
-        if (k === 'ArrowDown' || k === 's' || k === 'S') {
-            startRepeat('down');
+        if (k === 'ArrowRight' || k === 'd' || k === 'D') {
+            startRepeat('right');
             e.preventDefault();
         }
     });
     window.addEventListener('keyup', (e) => {
         const k = e.key;
-        if (k === 'ArrowUp' || k === 'w' || k === 'W') stopRepeat('up');
-        if (k === 'ArrowDown' || k === 's' || k === 'S') stopRepeat('down');
+        if (k === 'ArrowLeft' || k === 'a' || k === 'A') stopRepeat('left');
+        if (k === 'ArrowRight' || k === 'd' || k === 'D') stopRepeat('right');
     });
 }
 
@@ -341,4 +343,11 @@ function centerNormToPxTop(n, rectH, height) {
     const center = v * height;
     const top = center - rectH / 2;
     return Math.max(0, Math.min(height - rectH, top));
+}
+
+function centerNormToPxLeft(n, rectW, width) {
+    const v = Math.max(0, Math.min(1, n));
+    const center = v * width;
+    const left = center - rectW / 2;
+    return Math.max(0, Math.min(width - rectW, left));
 }
