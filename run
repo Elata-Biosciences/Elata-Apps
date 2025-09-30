@@ -1,5 +1,195 @@
-#!/bin/bash
+#!/usr/bin/env bash
+#
+# Unified project runner.
+# Provides commands for development, testing, building, and deployment.
+#
+# Commands:
+#   start    Start the server (builds CSS once).
+#   dev      Start the server with auto-reload and watch for CSS changes.
+#   test     Run server tests.
+#   build    Build front-end assets.
+#   deploy   Show deployment commands.
+#   restart  Kill the process on port 3000 and start again.
+#   help     Show this help message.
 
-cd Pongo/server
-npm install
-npm start
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT_DIR"
+
+# --- Helper Functions ---
+
+usage() {
+  echo "Usage: ./run [command]"
+  echo
+  echo "Commands:"
+  echo "  start    Start the server (builds CSS once)."
+  echo "  dev      Start server with auto-reload and watch for CSS changes."
+  echo "  test     Run server tests."
+  echo "  build    Build front-end assets."
+  echo "  deploy   Show deployment commands."
+  echo "  restart  Kill the process on port 3000 and start again."
+  echo "  help     Show this help message."
+}
+
+ensure_deps() {
+  local dir="$1"
+  if [ -f "$dir/package.json" ]; then
+    echo "Installing dependencies for $dir..."
+    (cd "$dir" && npm install)
+  else
+    echo "Error: $dir/package.json not found." >&2
+    exit 1
+  fi
+}
+
+build_pongo_css_once() {
+  if [ -f "Pongo/package.json" ]; then
+    echo "Building Pongo Tailwind CSS..."
+    (cd Pongo && npm run build:css:once)
+  fi
+}
+
+watch_pongo_css_bg() {
+  if [ -f "Pongo/package.json" ]; then
+    echo "Starting Tailwind CSS watch in background..."
+    (cd Pongo && npm run build:css > ../pongo-build.log 2>&1 &)
+    echo "CSS watch process started. Log: pongo-build.log"
+  fi
+}
+
+kill_on_port() {
+  local port="$1"
+  echo "Checking for process on port $port..."
+  if lsof -ti:"$port" > /dev/null; then
+    echo "Process found. Attempting to kill..."
+    lsof -ti:"$port" | xargs kill -9
+    echo "Process on port $port killed."
+  else
+    echo "No process found on port $port."
+  fi
+}
+ensure_ngrok_3000() {
+  # Start an ngrok tunnel to http 3000 if none is running.
+  if ! command -v ngrok >/dev/null 2>&1; then
+    echo "ngrok not found in PATH. Skipping ngrok tunnel."
+    return 0
+  fi
+  local api="http://127.0.0.1:4040/api/tunnels"
+  # If ngrok API is up, check if there's already a tunnel to localhost:3000
+  if curl -sf "$api" >/dev/null 2>&1; then
+    local json
+    json=$(curl -sf "$api" || true)
+    if echo "$json" | grep -q '"addr":"http://localhost:3000"'; then
+      # Extract first https public_url if possible (no jq dependency)
+      local pub
+      pub=$(echo "$json" | sed -n 's/.*"public_url":"\(https:\/\/[^"[:space:]]*\)".*/\1/p' | head -n1)
+      if [ -n "${pub:-}" ]; then
+        echo "ngrok already running. Public URL: $pub"
+      else
+        echo "ngrok already running. See dashboard at http://127.0.0.1:4040"
+      fi
+      return 0
+    fi
+  fi
+  echo "Starting ngrok tunnel for http 3000..."
+  (ngrok http 3000 > ngrok.log 2>&1 &)
+  # Wait briefly for API to expose the tunnel
+  for i in 1 2 3 4 5 6 7 8; do
+    sleep 1
+    if curl -sf "$api" >/dev/null 2>&1; then
+      local json2
+      json2=$(curl -sf "$api" || true)
+      if echo "$json2" | grep -q '"addr":"http://localhost:3000"'; then
+        local pub
+        pub=$(echo "$json2" | sed -n 's/.*"public_url":"\(https:\/\/[^"[:space:]]*\)".*/\1/p' | head -n1)
+        echo "ngrok ready: ${pub:-see http://127.0.0.1:4040}"
+        return 0
+      fi
+    fi
+  done
+  echo "ngrok launched but public URL not detected yet. Check ngrok.log or http://127.0.0.1:4040"
+}
+
+
+# --- Command Logic ---
+
+while [ $# -gt 0 ]; do
+    ACTION="${1:-start}"
+
+    case "$ACTION" in
+    help|-h|--help)
+        usage
+        ;;
+
+    test)
+        ensure_deps "server"
+        echo "Running server tests..."
+        (cd server && npm test)
+        ;;
+
+    build)
+        ensure_deps "Pongo"
+        build_pongo_css_once
+        echo "Build complete."
+        ;;
+
+    deploy)
+        echo "Build assets first by running: ./run build"
+        echo
+        echo "DigitalOcean App Platform Commands:"
+        echo "  Build: npm ci --prefix server && npm ci --prefix Pongo && npm run build:css:once --prefix Pongo"
+        echo "  Run:   npm start --prefix server"
+        ;;
+
+    dev)
+        if lsof -ti:3000 > /dev/null; then
+          echo "Server is already running on port 3000. Use './run stop' first."
+          open http://localhost:3000
+          exit 0
+        fi
+        ensure_deps "Pongo"
+        ensure_deps "server"
+        watch_pongo_css_bg
+        echo "Starting main server in watch mode..."
+        ensure_ngrok_3000 || true
+        # Open browser after a short delay to let server start
+        (sleep 2 && open http://localhost:3000) &
+        exec bash -lc "cd server && DEBUG_GAME=1 NODE_ENV=development npm run dev"
+        ;;
+
+    stop)
+        kill_on_port 3000
+        ;;
+
+    restart)
+        kill_on_port 3000
+        ensure_deps "Pongo"
+        ensure_deps "server"
+        build_pongo_css_once
+        echo "Starting main server..."
+        ensure_ngrok_3000 || true
+        exec bash -lc "cd server && npm start"
+        ;;
+
+    start)
+        if lsof -ti:3000 > /dev/null; then
+        echo "Server is already running on port 3000. Use './run restart' to force it."
+        exit 0
+        fi
+        ensure_deps "Pongo"
+        ensure_deps "server"
+        build_pongo_css_once
+        echo "Starting main server..."
+        ensure_ngrok_3000 || true
+        exec bash -lc "cd server && npm start"
+        ;;
+
+    *)
+        echo "Unknown command: $ACTION"
+        usage
+        exit 1
+        ;;
+    esac
+      shift
+done
