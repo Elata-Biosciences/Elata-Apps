@@ -65,22 +65,22 @@ Server also emits:
 
 ## 3) Send inputs (players only)
 
-Send normalized paddle position in `[0, 1]` where `0` is left and `1` is right.
+Send normalized paddle position in `[0, 1]` where `0` is top and `1` is bottom.
 
 Client → Server:
-- `input` payload: `{ roomId: string, paddleX: number }`
+- `input` payload: `{ roomId: string, paddleY: number }`
 
 Example (browser):
 
 ```js
 window.addEventListener('mousemove', (e) => {
-  const x = e.clientX / window.innerWidth; // 0..1
-  game.emit('input', { roomId: 'arena-1', paddleX: x });
+  const y = e.clientY / window.innerHeight; // 0..1
+  game.emit('input', { roomId: 'arena-1', paddleY: y });
 });
 ```
 
 Server → Client (relay so peers update instantly):
-- `input` → `{ side: 'top'|'bottom', paddleX: number }`
+- `input` → `{ side: 'left'|'right', paddleY: number }`
 
 ---
 

@@ -4,8 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build:css": "npx tailwindcss -i ./src/styles.css -o ./dist/styles.css --watch",
-    "build:css:once": "npx tailwindcss -i ./src/styles.css -o ./dist/styles.css --minify",
+    "build:css": "tailwindcss -i ./src/styles.css -o ./dist/styles.css --watch",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {

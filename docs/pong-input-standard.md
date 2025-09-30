@@ -37,33 +37,34 @@ Connect (browser):
 Two supported forms. Use whichever best matches your input device.
 
 ### 1) Absolute position (normalized)
-- Client → Server: `input` `{ roomId: string, paddleX: number }`
-  - `paddleX ∈ [0,1]` (0: left, 1: right)
+- Client → Server: `input` `{ roomId: string, paddleY: number }`
+  - `paddleY ∈ [0,1]` (0: top, 1: bottom)
 - Server behavior:
   - Clamps to `[0,1]`
   - Updates the sending player’s paddle immediately
-  - Relays to peers: `input` `{ side, paddleX }`
+  - Relays to peers: `input` `{ side, paddleY }`
 
 Example (mouse):
 ```js
 window.addEventListener('mousemove', (e) => {
-  const x = e.clientX / window.innerWidth;
-  game.emit('input', { roomId: ROOM, paddleX: x });
+  const y = e.clientY / window.innerHeight;
+  game.emit('input', { roomId: ROOM, paddleY: y });
 });
 ```
 
 ### 2) Directional step (keyboard/controller-friendly)
-- Client → Server: `input` `{ roomId: string, dir: 'left'|'right', step?: number }`
+- Client → Server: `input` `{ roomId: string, dir: 'up'|'down'|'left'|'right', step?: number }`
   - `step` optional; default `0.04` (normalized units per message)
 - Server behavior:
-  - Computes `xNew = clamp01(currentX + dx)` where `dx = ±step` for left/right
-  - Relays to peers: `input` `{ side, paddleX, dir }`
+  - Computes `yNew = clamp01(currentY + dy)` where `dy = ±step` for up/down
+  - Left/right are reserved for future horizontal games and are currently ignored
+  - Relays to peers: `input` `{ side, paddleY, dir }`
 
 Example (keyboard):
 ```js
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'ArrowLeft' || e.key === 'a') game.emit('input', { roomId: ROOM, dir: 'left' });
-  if (e.key === 'ArrowRight' || e.key === 'd') game.emit('input', { roomId: ROOM, dir: 'right' });
+  if (e.key === 'ArrowUp' || e.key === 'w') game.emit('input', { roomId: ROOM, dir: 'up' });
+  if (e.key === 'ArrowDown' || e.key === 's') game.emit('input', { roomId: ROOM, dir: 'down' });
 });
 ```
 
@@ -82,8 +83,8 @@ function pollGamepad(){
 ---
 
 ## State Broadcasts (Server → Client)
-- `state` `{ t, paddles: {top,bottom}, ball: {x,y,vx,vy}, scores: {top,bottom} }` @ ~30Hz
-- `input` relay `{ side: 'top'|'bottom', paddleX: number, dir?: string }`
+- `state` `{ t, paddles: {left,right}, ball: {x,y,vx,vy}, scores: {left,right} }` @ ~30Hz
+- `input` relay `{ side: 'left'|'right', paddleY: number, dir?: string }`
 - `player:join`, `player:leave`
 
 All positions are normalized `[0,1]` in both axes.
