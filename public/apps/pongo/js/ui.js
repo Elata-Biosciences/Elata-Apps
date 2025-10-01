@@ -19,11 +19,52 @@ export function initUI(onRestart, onStart) {
     startOverlay = document.getElementById('startOverlay');
     toast = document.getElementById('toast');
 
+    // Connect both restart buttons
     restartButton.addEventListener('click', onRestart);
+    const restartGameButton = document.getElementById('restartGameButton');
+    if (restartGameButton) {
+        restartGameButton.addEventListener('click', onRestart);
+    }
+
+    // Ball Speed button - open modal
+    if (speedButton) {
+        speedButton.addEventListener('click', () => {
+            speedModal.style.display = 'flex';
+        });
+    }
+
+    // Close speed modal
+    if (closeSpeedModal) {
+        closeSpeedModal.addEventListener('click', () => {
+            speedModal.style.display = 'none';
+        });
+    }
+
+    // Speed choice buttons
+    const speedChoices = document.querySelectorAll('.speed-choice');
+    speedChoices.forEach(button => {
+        button.addEventListener('click', () => {
+            const speed = parseFloat(button.dataset.speed);
+            setSpeedMultiplier(speed);
+            speedModal.style.display = 'none';
+            const speedLabel = button.textContent;
+            showToast(`Ball speed set to ${speedLabel}`);
+        });
+    });
 
     const startButton = document.getElementById('startButton');
     if (startButton && typeof onStart === 'function') {
         startButton.addEventListener('click', onStart);
+    }
+
+    // Mute button (will be wired to audio in main.js)
+    if (muteButton) {
+        muteButton.addEventListener('click', () => {
+            // This will be handled by importing toggleMute from audio
+            if (window.toggleGameMute) {
+                window.toggleGameMute();
+            }
+        });
     }
 }
 
@@ -39,17 +80,32 @@ export function updateGameTimer(minutes, seconds) {
 }
 
 export function showMessage(message, showButton = true) {
-    messageText.textContent = message;
-    messageBox.classList.remove('hidden');
-    if (showButton) {
+    console.log('[ui] showMessage() called with:', message, 'showButton:', showButton);
+    console.log('[ui] messageBox exists:', !!messageBox);
+    console.log('[ui] messageText exists:', !!messageText);
+    
+    if (messageText) {
+        messageText.textContent = message;
+    }
+    if (messageBox) {
+        messageBox.classList.remove('hidden');
+        messageBox.style.display = 'flex'; // Force display
+        console.log('[ui] Set messageBox display to flex');
+    }
+    if (showButton && restartButton) {
         restartButton.classList.remove('hidden');
-    } else {
+        restartButton.style.display = 'block';
+    } else if (restartButton) {
         restartButton.classList.add('hidden');
+        restartButton.style.display = 'none';
     }
 }
 
 export function hideMessage() {
-    messageBox.classList.add('hidden');
+    if (messageBox) {
+        messageBox.classList.add('hidden');
+        messageBox.style.display = 'none';
+    }
 }
 
 export function hideStartOverlay() {

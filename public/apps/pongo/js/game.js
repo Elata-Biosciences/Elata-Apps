@@ -13,8 +13,8 @@ const PADDLE_COLOR_OPP = PADDLE_COLOR;
 const SPEED_INCREMENT = 1.08;
 const MAX_SPEED_MULTIPLIER = 1.35;
 
-// Speed multiplier controlled by UI slider (1.0 = default)
-let speedMultiplier = 1.0;
+// Speed multiplier controlled by UI slider (0.8 = default/normal)
+let speedMultiplier = 0.8;
 
 // Game objects
 let player = {
