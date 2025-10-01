@@ -5,7 +5,7 @@ import { playSound } from './audio.js';
 const PADDLE_WIDTH = 100;  // Now horizontal width
 const PADDLE_HEIGHT = 15;  // Now horizontal height
 const BALL_RADIUS = 10;
-const WINNING_SCORE = 5;
+const WINNING_SCORE = 100;
 const PADDLE_COLOR = '#00ffff';
 const BALL_COLOR = '#ffffff';
 const PADDLE_COLOR_SELF = '#ff00ff';
