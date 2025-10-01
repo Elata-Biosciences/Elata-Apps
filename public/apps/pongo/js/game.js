@@ -13,8 +13,8 @@ const PADDLE_COLOR_OPP = PADDLE_COLOR;
 const SPEED_INCREMENT = 1.08;
 const MAX_SPEED_MULTIPLIER = 1.35;
 
-// Speed multiplier controlled by UI slider (0.8 = default/normal)
-let speedMultiplier = 0.8;
+// Speed multiplier controlled by UI slider (0.5 = default/normal)
+let speedMultiplier = 0.5;
 
 // Game objects
 let player = {
@@ -78,9 +78,8 @@ function updateGameState(useAI) {
         opponent.x = Math.max(0, Math.min(canvas.width - opponent.width, opponent.x));
     }
 
-    // Player paddle smoothing
-    // Move the player paddle towards its targetX for smooth movement
-    player.x += (player.targetX - player.x) * 0.1;
+    // Player paddle - direct movement (no smoothing for better EEG responsiveness)
+    player.x = player.targetX;
     player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
 
 

@@ -15,9 +15,8 @@ let lastMouseMoveTime = 0; // Track last mouse movement
 let animationFrameId;
 let gameTimerId;
 
-// GAME DURATION: Change this value to test different game lengths
-// Examples: 30 (30 seconds), 60 (1 minute), 300 (5 minutes)
-const GAME_DURATION = 300; // in seconds
+// GAME DURATION: Set to 1 minute for better playability
+const GAME_DURATION = 60; // in seconds
 let gameTimeRemaining = GAME_DURATION;
 
 function getRoomId() {
