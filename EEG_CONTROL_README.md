@@ -22,9 +22,9 @@ The server will start on `http://localhost:3000`
 
 Open the game in a named room using the 'room' query parameter:
 
-- http://localhost:3000/apps/pongo/?room=brain-room
+- http://localhost:3000/apps/pongo/?room=default
 
-In this example the roomId is `brain-room`.
+In this example the roomId is `default`.
 
 ## Quick start: Simulated EEG → relay → browser (horizontal paddleX)
 
@@ -148,8 +148,8 @@ Check that your EEG script is outputting data in the correct format. You should 
 
 ### "Paddle not moving"
 
-1. Make sure you've opened the game in your browser at the correct room URL (e.g., http://localhost:3000/apps/pongo/?room=brain-room)
-2. Check the EEG controller output - you should see `Joined room 'brain-room'` (or your room)
+1. Make sure you've opened the game in your browser at the correct room URL (e.g., http://localhost:3000/apps/pongo/?room=default
+2. Check the EEG controller output - you should see `Joined room 'default'` (or your room)
 3. Verify predictions are being received - you should see messages like `[EEG] -> P1 left (x=0.20)`
 
 ### Testing the connection
@@ -161,9 +161,9 @@ Use the test simulator to verify everything works:
 ./run dev
 
 # Terminal 2: Start EEG controller with test data
-python test_eeg_stream.py | python eeg_to_pongo.py --room brain-room
+python test_eeg_stream.py | python eeg_to_pongo.py --room default
 
-# Browser: Open http://localhost:3000/apps/pongo/?room=brain-room
+# Browser: Open http://localhost:3000/apps/pongo/?room=default
 ```
 
 You should see the paddle moving automatically based on the simulated predictions.
