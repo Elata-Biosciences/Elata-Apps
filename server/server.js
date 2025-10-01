@@ -71,16 +71,11 @@ app.get('/game/config', (_req, res) => {
   });
 });
 
-// Clean URLs for app rooms: /:app/:roomId -> serve the app's HTML
-app.get('/pongo/:roomId', (req, res, next) => {
-  const publicDir = path.join(__dirname, '..', 'public', 'apps', 'pongo');
-  const target = path.join(publicDir, 'index.html');
-  if (!fs.existsSync(target)) return next();
-  res.sendFile(target);
+// New route for Pongo app to handle query parameter-based rooms
+app.get('/apps/pongo', (req, res) => {
+    const pongoHtmlPath = path.join(__dirname, '..', 'public', 'apps', 'pongo', 'index.html');
+    res.sendFile(pongoHtmlPath);
 });
-
-
-
 
 const server = http.createServer(app);
 const io = new Server(server, {

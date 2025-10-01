@@ -20,9 +20,9 @@ The server will start on `http://localhost:3000`
 
 ### 3. Open the Game in Browser
 
-Open the game in a named room (the roomId is the last path segment):
+Open the game in a named room using the 'room' query parameter:
 
-- http://localhost:3000/pongo/brain-room
+- http://localhost:3000/apps/pongo/?room=brain-room
 
 In this example the roomId is `brain-room`.
 
@@ -31,7 +31,7 @@ In this example the roomId is `brain-room`.
 Run the simulated EEG pipeline in another terminal:
 
 ```bash
-python3 test_eeg_stream.py | python3 eeg_to_pongo.py --room brain-room
+python3 test_eeg_stream.py | python3 eeg_to_pongo.py --room default
 ```
 
 This streams left/neutral/right class predictions that are mapped to paddleX ≈ 0.2 / 0.5 / 0.8.
@@ -104,7 +104,7 @@ Available options:
 python your_eeg_script.py | python eeg_to_pongo.py --room my-room
 ```
 
-Then open: `http://localhost:3000/pongo/my-room`
+Then open: `http://localhost:3000/apps/pongo/?room=my-room`
 
 ### Use raw predictions instead of smoothed:
 
@@ -148,7 +148,7 @@ Check that your EEG script is outputting data in the correct format. You should 
 
 ### "Paddle not moving"
 
-1. Make sure you've opened the game in your browser at the correct room URL (e.g., http://localhost:3000/pongo/brain-room)
+1. Make sure you've opened the game in your browser at the correct room URL (e.g., http://localhost:3000/apps/pongo/?room=brain-room)
 2. Check the EEG controller output - you should see `Joined room 'brain-room'` (or your room)
 3. Verify predictions are being received - you should see messages like `[EEG] -> P1 left (x=0.20)`
 
@@ -161,9 +161,9 @@ Use the test simulator to verify everything works:
 ./run dev
 
 # Terminal 2: Start EEG controller with test data
-python test_eeg_stream.py | python eeg_to_pongo.py
+python test_eeg_stream.py | python eeg_to_pongo.py --room brain-room
 
-# Browser: Open http://localhost:3000/pongo/eeg-control
+# Browser: Open http://localhost:3000/apps/pongo/?room=brain-room
 ```
 
 You should see the paddle moving automatically based on the simulated predictions.
