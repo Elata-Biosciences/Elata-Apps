@@ -1,7 +1,7 @@
 // Pongo/js/main.js
 
 import { initUI, updateScores, showMessage, showToast, hideStartOverlay, hideMessage, updateCountdown, hideCountdown, updateGameTimer } from './ui.js';
-import { initGame, updateGameState, draw, player, opponent, ball, resetBall, WINNING_SCORE } from './game.js';
+import { initGame, updateGameState, draw, player, opponent, ball, resetBall, WINNING_SCORE, setPlayerTargetX } from './game.js';
 import { initAudio, playSound, toggleMute } from './audio.js';
 
 const canvas = document.getElementById('pongCanvas');
@@ -49,9 +49,9 @@ function init() {
         // Only allow mouse control if EEG is not active
         if (!eegControlActive && !useMultiplayer) {
             let rect = canvas.getBoundingClientRect();
-            player.x = evt.clientX - rect.left - player.width / 2;
-            // Keep player paddle within bounds
-            player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
+            const centerPx = evt.clientX - rect.left;
+            const leftPx = Math.max(0, Math.min(canvas.width - player.width, centerPx - player.width / 2));
+            setPlayerTargetX(leftPx); // Use the new function to set target
         }
     });
 
@@ -86,7 +86,7 @@ function init() {
                 const clamped = Math.max(0, Math.min(1, Number(xNorm)));
                 const centerPx = clamped * canvas.width;
                 const leftPx = Math.max(0, Math.min(canvas.width - player.width, centerPx - player.width / 2));
-                player.x = leftPx;
+                setPlayerTargetX(leftPx); // Use the new function to set target
                 try { relaySock.emit('client:log', { event: 'eeg_input_applied', data: { xNorm: clamped, leftPx } }); } catch {}
             } else {
                 console.warn('[EEG][client] invalid input payload, missing command/paddleX');

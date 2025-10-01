@@ -20,6 +20,7 @@ let speedMultiplier = 1.0;
 let player = {
     x: 0,
     y: 0,
+    targetX: 0, // Add targetX for smooth interpolation
     width: PADDLE_WIDTH,
     height: PADDLE_HEIGHT,
     color: PADDLE_COLOR_SELF,
@@ -53,6 +54,7 @@ function initGame(canvasElement, context) {
     // Position paddles horizontally - player at bottom, computer at top
     player.y = canvas.height - (PADDLE_HEIGHT * 2);
     player.x = canvas.width / 2 - PADDLE_WIDTH / 2;
+    player.targetX = player.x; // Initialize targetX
     opponent.y = PADDLE_HEIGHT;
     opponent.x = canvas.width / 2 - PADDLE_WIDTH / 2;
     resetBall();
@@ -75,6 +77,12 @@ function updateGameState(useAI) {
         // Keep computer paddle within bounds
         opponent.x = Math.max(0, Math.min(canvas.width - opponent.width, opponent.x));
     }
+
+    // Player paddle smoothing
+    // Move the player paddle towards its targetX for smooth movement
+    player.x += (player.targetX - player.x) * 0.1;
+    player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
+
 
     // Ball movement
     ball.x += ball.velocityX * speedMultiplier;
@@ -179,12 +187,17 @@ function setSpeedMultiplier(multiplier) {
     speedMultiplier = multiplier;
 }
 
+function setPlayerTargetX(x) {
+    player.targetX = x;
+}
+
 export {
     initGame,
     resetBall,
     updateGameState,
     draw,
     setSpeedMultiplier,
+    setPlayerTargetX, // Export the new function
     player,
     opponent,
     ball,

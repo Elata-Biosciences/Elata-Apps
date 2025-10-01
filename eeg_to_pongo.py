@@ -1,218 +1,127 @@
 #!/usr/bin/env python3
-"""
-EEG to Pongo Controller
-Reads EEG predictions from stdin and sends paddle commands to Pongo game via WebSocket.
-
-Usage:
-    python your_eeg_script.py | python eeg_to_pongo.py
-    # or
-    cat data.txt | python eeg_to_pongo.py
-"""
-
 import sys
-import re
 import asyncio
 import socketio
+import json
+import time
 import argparse
+from collections import deque
 
-# Command mapping: prediction class -> paddle command
-# Adjust these mappings based on your training labels
-CLASS_TO_COMMAND = {
-    0: 'left',     # Move paddle left (or up)
-    1: 'right',    # Move paddle right (or down)
-    2: 'neutral',  # No movement / center
-}
+# --- Configuration ---
+UPDATE_INTERVAL = 1.0 / 60.0  # 60 Hz
+HISTORY_SIZE = 10  # Number of recent predictions to consider
+SMOOTHING_FACTOR = 0.3  # How much to blend new predictions with history (0-1)
 
-# WebSocket configuration
-DEFAULT_SERVER_URL = 'http://localhost:3000'
-DEFAULT_ROOM = 'eeg-control'
+# --- Global State ---
+sio = socketio.AsyncClient()
+current_paddle_x = 0.5
+prediction_history = deque(maxlen=HISTORY_SIZE)  # Store recent probability vectors
 
-class EEGPongoController:
-    def __init__(self, server_url, room_id, use_smoothed=True):
-        self.server_url = server_url
-        self.room_id = room_id
-        self.use_smoothed = use_smoothed
-        self.sio = socketio.AsyncClient()
-        self.connected = False
-        self.player_id = None
-        self.side = None
-        
-        # Setup event handlers
-        self.sio.on('connect', self.on_connect)
-        self.sio.on('disconnect', self.on_disconnect)
-        self.sio.on('joined', self.on_joined)
-        
-    async def on_connect(self):
-        print(f"[EEG] Connected to {self.server_url}", file=sys.stderr)
-        self.connected = True
-        
-    async def on_disconnect(self):
-        print("[EEG] Disconnected from server", file=sys.stderr)
-        self.connected = False
-        
-    async def on_joined(self, data):
-        self.player_id = data.get('playerId')
-        self.side = data.get('side')
-        print(f"[EEG] Joined room '{self.room_id}' as {self.side} paddle (ID: {self.player_id})", file=sys.stderr)
-        
-    async def connect(self):
-        """Connect to the Pongo relay namespace and join a room"""
+async def send_paddle_command(room):
+    """Sends the current paddle position to the server via Socket.IO."""
+    try:
+        # The server expects the room in the 'join' event, not every input event.
+        # Sending paddleX is sufficient as per the client-side implementation.
+        await sio.emit('input', {'paddleX': current_paddle_x}, namespace='/relay')
+    except socketio.exceptions.BadNamespaceError:
+        print("Error: Not connected to the '/relay' namespace.", file=sys.stderr)
+    except Exception as e:
+        print(f"An error occurred while sending command: {e}", file=sys.stderr)
+
+async def control_loop(room):
+    """The main loop that continuously sends paddle position updates."""
+    while True:
+        await send_paddle_command(room)
+        await asyncio.sleep(UPDATE_INTERVAL)
+
+async def listen_for_eeg_data():
+    """Listens for JSON data from stdin and updates the target paddle position."""
+    global current_paddle_x
+    loop = asyncio.get_event_loop()
+    reader = asyncio.StreamReader()
+    protocol = asyncio.StreamReaderProtocol(reader)
+    await loop.connect_read_pipe(lambda: protocol, sys.stdin)
+
+    print("Listening for EEG data on stdin...", file=sys.stderr)
+
+    while True:
+        line = await reader.readline()
+        if not line:
+            break
         try:
-            base_url = self.server_url.rstrip('/')
-            print(f"[EEG] Connecting to {base_url} (namespace=/relay)", file=sys.stderr)
-            await self.sio.connect(base_url, transports=['websocket'], namespaces=['/relay'])
-            self.connected = True  # mark connected after successful connect
-            try:
-                ack = await self.sio.call('join', {
-                    'roomId': self.room_id,
-                    'name': 'EEG Controller'
-                }, timeout=2.0, namespace='/relay')
-                print(f"[EEG] Join ack: {ack}", file=sys.stderr)
-            except Exception as e:
-                print(f"[EEG] Join ack failed (continuing): {e}", file=sys.stderr)
-            print(f"[EEG] Joined room: {self.room_id} (/relay)", file=sys.stderr)
+            data = json.loads(line)
+            if 'probs' in data and isinstance(data['probs'], list) and len(data['probs']) == 3:
+                probs = data['probs']
+                
+                # Add to history
+                prediction_history.append(probs)
+                
+                # Calculate smoothed probabilities using exponential moving average
+                if len(prediction_history) > 0:
+                    # Start with the most recent prediction
+                    smoothed_probs = list(probs)
+                    
+                    # Blend with historical predictions
+                    for hist_probs in list(prediction_history)[:-1]:  # Exclude the most recent one
+                        for i in range(3):
+                            smoothed_probs[i] = (smoothed_probs[i] * SMOOTHING_FACTOR + 
+                                               hist_probs[i] * (1 - SMOOTHING_FACTOR))
+                    
+                    # Normalize
+                    total = sum(smoothed_probs)
+                    if total > 0:
+                        smoothed_probs = [p/total for p in smoothed_probs]
+                    
+                    # Calculate target position using smoothed probabilities
+                    # probs[0] = left, probs[1] = center, probs[2] = right
+                    # Map to x-positions: 0.15 (left), 0.5 (center), 0.85 (right)
+                    target_x = (smoothed_probs[0] * 0.15) + (smoothed_probs[1] * 0.5) + (smoothed_probs[2] * 0.85)
+                    
+                    # Only update if the change is significant (reduce micro-jitters)
+                    if abs(target_x - current_paddle_x) > 0.02:
+                        current_paddle_x = target_x
+                    
+        except json.JSONDecodeError:
+            pass # Ignore non-JSON lines
         except Exception as e:
-            print(f"[EEG] Error connecting: {e}", file=sys.stderr)
-            raise
-            
-    async def send_paddle_command(self, command, paddle_y=None):
-        """Send paddle movement command to server"""
-        if not self.connected:
-            return
+            print(f"An error occurred processing EEG data: {e}", file=sys.stderr)
 
-        try:
-            # Map command to normalized X center position (0.0 = left, 1.0 = right)
-            if command == 'neutral':
-                target_x = 0.5
-            elif command == 'left':
-                target_x = 0.2
-            elif command == 'right':
-                target_x = 0.8
-            else:
-                return
+@sio.event
+async def connect():
+    # This is a general connection event, the room is joined in main()
+    print("Connected to server.", file=sys.stderr)
 
-            # Send to relay namespace so browser can apply directly to Player 1
-            await self.sio.emit('input', {
-                'paddleX': float(target_x),
-                'command': command,
-                'roomId': self.room_id,
-            }, namespace='/relay')
+@sio.event
+async def disconnect():
+    print("Disconnected from server.", file=sys.stderr)
 
-            print(f"[EEG] -> P1 {command} (x={target_x:.2f})", file=sys.stderr)
-
-        except Exception as e:
-            print(f"[EEG] Error sending command: {e}", file=sys.stderr)
-            
-    async def disconnect(self):
-        """Disconnect from server"""
-        if self.connected:
-            await self.sio.disconnect()
-            
-    def parse_prediction_line(self, line):
-        """
-        Parse a prediction line and extract the smoothed or raw prediction.
+async def main(room):
+    """Main function to connect to the server and start the loops."""
+    try:
+        await sio.connect('http://localhost:3000', namespaces=['/relay'])
+        print(f"Joining room '{room}' in '/relay' namespace.", file=sys.stderr)
+        await sio.emit('join', {'roomId': room, 'name': 'EEG Script'}, namespace='/relay')
         
-        Example line:
-        [pred] raw=0 smoothed=0 probs=[0.944, 0.015, 0.041] | fs=250.0Hz win=250 hop=62 | Fp1=ch3 Fp2=ch6
-        
-        Returns:
-            int: Prediction class (0, 1, or 2) or None if parsing fails
-        """
-        try:
-            # Extract smoothed or raw prediction
-            if self.use_smoothed:
-                match = re.search(r'smoothed=(\d+)', line)
-            else:
-                match = re.search(r'raw=(\d+)', line)
-                
-            if match:
-                pred_class = int(match.group(1))
-                return pred_class
-            return None
-        except Exception as e:
-            print(f"[EEG] Error parsing line: {e}", file=sys.stderr)
-            return None
-            
-    async def process_stdin(self):
-        """Read predictions from stdin and send commands"""
-        print("[EEG] Reading predictions from stdin...", file=sys.stderr)
-        print("[EEG] Mapping: 0=left/up, 1=right/down, 2=neutral/center", file=sys.stderr)
-        
-        loop = asyncio.get_event_loop()
-        
-        while True:
-            try:
-                # Read line from stdin (non-blocking)
-                line = await loop.run_in_executor(None, sys.stdin.readline)
-                
-                if not line:
-                    # EOF reached
-                    print("[EEG] End of input stream", file=sys.stderr)
-                    break
-                    
-                line = line.strip()
-                if not line:
-                    continue
-                    
-                # Parse prediction
-                pred_class = self.parse_prediction_line(line)
-                
-                if pred_class is not None:
-                    # Map to command
-                    command = CLASS_TO_COMMAND.get(pred_class, 'rest')
-                    
-                    # Send command to Pongo
-                    await self.send_paddle_command(command)
-                    
-            except KeyboardInterrupt:
-                print("\n[EEG] Interrupted by user", file=sys.stderr)
-                break
-            except Exception as e:
-                print(f"[EEG] Error processing input: {e}", file=sys.stderr)
-                await asyncio.sleep(0.1)
-                
-        await self.disconnect()
+        # Start the main loops
+        control_task = asyncio.create_task(control_loop(room))
+        eeg_task = asyncio.create_task(listen_for_eeg_data())
+        await asyncio.gather(control_task, eeg_task)
 
-async def main():
-    parser = argparse.ArgumentParser(description='EEG to Pongo Controller')
-    parser.add_argument('--server', default=DEFAULT_SERVER_URL, 
-                        help=f'Pongo server URL (default: {DEFAULT_SERVER_URL})')
-    parser.add_argument('--room', default=DEFAULT_ROOM,
-                        help=f'Room ID to join (default: {DEFAULT_ROOM})')
-    parser.add_argument('--use-raw', action='store_true',
-                        help='Use raw predictions instead of smoothed')
-    parser.add_argument('--map', nargs=3, metavar=('CLASS0', 'CLASS1', 'CLASS2'),
-                        help='Custom command mapping (e.g., --map rest up down)')
-    
-    args = parser.parse_args()
-    
-    # Update command mapping if provided
-    if args.map:
-        CLASS_TO_COMMAND[0] = args.map[0]
-        CLASS_TO_COMMAND[1] = args.map[1]
-        CLASS_TO_COMMAND[2] = args.map[2]
-        print(f"[EEG] Custom mapping: 0={args.map[0]}, 1={args.map[1]}, 2={args.map[2]}", file=sys.stderr)
-    
-    # Create controller
-    controller = EEGPongoController(
-        server_url=args.server,
-        room_id=args.room,
-        use_smoothed=not args.use_raw
-    )
-    
-    # Connect to server
-    await controller.connect()
-    
-    # Wait for connection
-    await asyncio.sleep(1)
-    
-    # Process stdin
-    await controller.process_stdin()
+    except socketio.exceptions.ConnectionError as e:
+        print(f"Connection failed: {e}", file=sys.stderr)
+        print("Is the Node.js server running on port 3000?", file=sys.stderr)
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}", file=sys.stderr)
+    finally:
+        if sio.connected:
+            await sio.disconnect()
 
 if __name__ == '__main__':
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\n[EEG] Exiting...", file=sys.stderr)
-        sys.exit(0)
+    parser = argparse.ArgumentParser(description='Send EEG paddle controls to Pongo game.')
+    parser.add_argument('--room', type=str, default='default', help='The room ID to join.')
+    args = parser.parse_args()
 
+    try:
+        asyncio.run(main(args.room))
+    except KeyboardInterrupt:
+        print("\nScript terminated by user.", file=sys.stderr)
