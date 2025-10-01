@@ -13,8 +13,8 @@ const PADDLE_COLOR_OPP = PADDLE_COLOR;
 const SPEED_INCREMENT = 1.08;
 const MAX_SPEED_MULTIPLIER = 1.35;
 
-// Speed multiplier controlled by UI slider (0.5 = default/normal)
-let speedMultiplier = 0.5;
+// Speed multiplier controlled by UI slider (0.1 = default/normal, 5x slower)
+let speedMultiplier = 0.1;
 
 // Game objects
 let player = {
@@ -71,9 +71,9 @@ function resetBall() {
 
 function updateGameState(useAI) {
     if (useAI) {
-        // AI paddle movement - now horizontal movement following ball X position
+        // AI paddle movement - much slower/worse AI for playability
         let targetX = ball.x - opponent.width / 2;
-        opponent.x += (targetX - opponent.x) * 0.1;
+        opponent.x += (targetX - opponent.x) * 0.02; // Very slow AI (was 0.1)
         // Keep computer paddle within bounds
         opponent.x = Math.max(0, Math.min(canvas.width - opponent.width, opponent.x));
     }

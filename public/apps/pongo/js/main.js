@@ -19,6 +19,13 @@ let gameTimerId;
 const GAME_DURATION = 60; // in seconds
 let gameTimeRemaining = GAME_DURATION;
 
+// EEG Discrete Positioning
+const EEG_LEFT_POSITION = 0.2;    // Left position (20% from left)
+const EEG_CENTER_POSITION = 0.5;  // Center position
+const EEG_RIGHT_POSITION = 0.8;   // Right position (80% from left)
+const EEG_THRESHOLD = 0.45;       // Probability threshold to trigger movement
+let currentEEGPosition = EEG_CENTER_POSITION; // Track current discrete position
+
 function getRoomId() {
     // Prioritize URL query parameter for room selection
     const urlParams = new URLSearchParams(window.location.search);
@@ -94,24 +101,46 @@ function init() {
                 return; // Mouse has priority
             }
 
-            // Support normalized center position: paddleX in [0,1]
-            let xNorm = null;
-            if (typeof msg.paddleX === 'number') xNorm = msg.paddleX;
-            if (typeof msg.command === 'string') {
+            // Discrete position control with thresholding
+            let inputValue = null;
+            
+            if (typeof msg.paddleX === 'number') {
+                inputValue = msg.paddleX;
+            } else if (typeof msg.command === 'string') {
+                // Legacy command support
                 const c = msg.command.toLowerCase();
-                if (c === 'left') xNorm = 0.2;
-                else if (c === 'right') xNorm = 0.8;
-                else if (c === 'neutral' || c === 'center' || c === 'centre') xNorm = 0.5;
+                if (c === 'left') inputValue = 0.2;
+                else if (c === 'right') inputValue = 0.8;
+                else if (c === 'neutral' || c === 'center' || c === 'centre') inputValue = 0.5;
             }
-            if (xNorm !== null && Number.isFinite(xNorm)) {
-                const clamped = Math.max(0, Math.min(1, Number(xNorm)));
-                const centerPx = clamped * canvas.width;
+            
+            if (inputValue !== null && Number.isFinite(inputValue)) {
+                // Discrete thresholding: only move to specific positions with clear signals
+                // Define zones: < 0.35 = left, > 0.65 = right, else stay put
+                let targetPosition = currentEEGPosition; // Default: don't move
+                
+                if (inputValue < 0.35) {
+                    // Strong left signal
+                    targetPosition = EEG_LEFT_POSITION;
+                } else if (inputValue > 0.65) {
+                    // Strong right signal
+                    targetPosition = EEG_RIGHT_POSITION;
+                }
+                // Middle zone (0.35-0.65): stay at current position (no jank)
+                
+                // Update current position if changed
+                if (targetPosition !== currentEEGPosition) {
+                    currentEEGPosition = targetPosition;
+                    console.log('[EEG] Position change:', targetPosition === EEG_LEFT_POSITION ? 'LEFT' : targetPosition === EEG_RIGHT_POSITION ? 'RIGHT' : 'CENTER');
+                }
+                
+                // Apply the discrete position
+                const centerPx = currentEEGPosition * canvas.width;
                 const leftPx = Math.max(0, Math.min(canvas.width - player.width, centerPx - player.width / 2));
-                setPlayerTargetX(leftPx); // Use the new function to set target
-                try { relaySock.emit('client:log', { event: 'eeg_input_applied', data: { xNorm: clamped, leftPx } }); } catch {}
+                setPlayerTargetX(leftPx);
+                try { relaySock.emit('client:log', { event: 'eeg_discrete_position', data: { inputValue, targetPosition: currentEEGPosition, leftPx } }); } catch {}
             } else {
-                console.warn('[EEG][client] invalid input payload, missing command/paddleX');
-                try { relaySock.emit('client:log', { event: 'eeg_input_invalid', data: { msg } }); } catch {}
+                console.warn('[EEG][client] invalid input payload');
             }
         });
 
