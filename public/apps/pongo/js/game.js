@@ -71,9 +71,25 @@ function resetBall() {
 
 function updateGameState(useAI) {
     if (useAI) {
-        // AI paddle movement - much slower/worse AI for playability
-        let targetX = ball.x - opponent.width / 2;
-        opponent.x += (targetX - opponent.x) * 0.02; // Very slow AI (was 0.1)
+        // AI paddle movement - SMOOTH RANDOM WANDERING
+        // Use sine wave with random frequency for smooth, fluid movement
+        if (!opponent.randomPhase) {
+            opponent.randomPhase = Math.random() * Math.PI * 2; // Random starting phase
+            opponent.randomSpeed = 0.01 + Math.random() * 0.1; // Random speed between 0.02-0.05
+        }
+        
+        // Update phase for smooth oscillation
+        opponent.randomPhase += opponent.randomSpeed;
+        
+        // Occasionally change direction/speed for variety
+        if (Math.random() < 0.005) { // 0.5% chance per frame to change
+            opponent.randomSpeed = 0.02 + Math.random() * 0.03;
+        }
+        
+        // Smooth movement using sine wave
+        let movement = Math.sin(opponent.randomPhase) * 10; // ±1.5 pixels smooth movement
+        opponent.x += movement;
+        
         // Keep computer paddle within bounds
         opponent.x = Math.max(0, Math.min(canvas.width - opponent.width, opponent.x));
     }
