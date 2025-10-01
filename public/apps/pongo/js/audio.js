@@ -69,6 +69,11 @@ class AudioSystem {
             oscillator: { type: "square" },
             envelope: { attack: 0.02, decay: 0.5, sustain: 0.1, release: 1 }
         }).connect(this.effects.reverb);
+
+        this.sounds.countdown = new Tone.Synth({
+            oscillator: { type: "triangle" },
+            envelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.1 }
+        }).connect(this.masterVolume);
     }
 
     play(sound, ...args) {
@@ -87,6 +92,9 @@ class AudioSystem {
                     break;
                 case 'computerScore':
                     this.sounds.computerScore.triggerAttackRelease("G2", "2n");
+                    break;
+                case 'countdown':
+                    this.sounds.countdown.triggerAttackRelease("A4", "16n");
                     break;
             }
         } catch (e) {
@@ -137,8 +145,10 @@ export function playSound(sound, ...args) {
 }
 
 export function toggleMute() {
-    if (!audioReady) return;
     isMuted = !isMuted;
-    Tone.Destination.mute = isMuted;
+    if (audioReady && window.Tone) {
+        Tone.Destination.mute = isMuted;
+    }
+    console.log(`[audio] Mute toggled: ${isMuted}`);
     return isMuted;
 }

@@ -1,6 +1,6 @@
 // Pongo/js/main.js
 
-import { initUI, updateScores, showMessage, showToast, hideStartOverlay, hideMessage, updateCountdown, hideCountdown, updateGameTimer } from './ui.js';
+import { initUI, updateScores, showMessage, showToast, hideStartOverlay, hideMessage, updateCountdown, hideCountdown, updateGameTimer, updateMuteButton } from './ui.js';
 import { initGame, updateGameState, draw, player, opponent, ball, resetBall, WINNING_SCORE, setPlayerTargetX } from './game.js';
 import { initAudio, playSound, toggleMute } from './audio.js';
 
@@ -10,9 +10,15 @@ const ctx = canvas.getContext('2d');
 let useMultiplayer = false;
 let gameRunning = false;
 let eegControlActive = false; // New state variable
+let lastEEGInputTime = 0; // Track last EEG input
+let lastMouseMoveTime = 0; // Track last mouse movement
 let animationFrameId;
 let gameTimerId;
-let gameTimeRemaining = 300; // 5 minutes in seconds
+
+// GAME DURATION: Change this value to test different game lengths
+// Examples: 30 (30 seconds), 60 (1 minute), 300 (5 minutes)
+const GAME_DURATION = 300; // in seconds
+let gameTimeRemaining = GAME_DURATION;
 
 function getRoomId() {
     // Prioritize URL query parameter for room selection
@@ -44,10 +50,17 @@ function init() {
     // Don't init audio here - wait for user gesture in startGame()
     initMultiplayer(isLocalDev);
 
+    // Setup global mute toggle
+    window.toggleGameMute = () => {
+        const isMuted = toggleMute();
+        updateMuteButton(isMuted);
+    };
+
     // Mouse movement for player paddle (now horizontal)
     canvas.addEventListener('mousemove', (evt) => {
-        // Only allow mouse control if EEG is not active
-        if (!eegControlActive && !useMultiplayer) {
+        // Mouse always takes priority over EEG when moved
+        if (!useMultiplayer) {
+            lastMouseMoveTime = Date.now();
             let rect = canvas.getBoundingClientRect();
             const centerPx = evt.clientX - rect.left;
             const leftPx = Math.max(0, Math.min(canvas.width - player.width, centerPx - player.width / 2));
@@ -67,10 +80,19 @@ function init() {
         });
         relaySock.on('input', (msg = {}) => {
             console.log('[EEG][client] relay input', msg);
+            // Update last EEG input time
+            lastEEGInputTime = Date.now();
+            
             // On first valid input, activate EEG control and notify user
             if (!eegControlActive) {
                 eegControlActive = true;
-                showToast("EEG Control Active");
+                showToast("EEG Control Active - Move mouse to override");
+            }
+
+            // Don't apply EEG input if mouse was moved recently (within 1 second)
+            const mouseRecentlyMoved = Date.now() - lastMouseMoveTime < 1000;
+            if (mouseRecentlyMoved) {
+                return; // Mouse has priority
             }
 
             // Support normalized center position: paddleX in [0,1]
@@ -124,6 +146,11 @@ function gameLoop() {
 
     updateGameState(!useMultiplayer);
     draw();
+    
+    // Update score display in single-player mode
+    if (!useMultiplayer) {
+        updateScores(player.score, opponent.score);
+    }
 
     if (player.score >= WINNING_SCORE) {
         endGame(`You win! Final Score: ${player.score} - ${opponent.score}`);
@@ -227,20 +254,36 @@ function actuallyStartGame() {
     updateScores(player.score, opponent.score);
     resetBall();
     gameRunning = true;
-    gameTimeRemaining = 300;
+    gameTimeRemaining = GAME_DURATION;
     updateTimerDisplay();
     startTimer();
+    console.log(`[main] Game started with duration: ${GAME_DURATION} seconds`);
     // The gameLoop is already running via requestAnimationFrame,
     // it will pick up the gameRunning = true state.
 }
 
 function startTimer() {
-    if (gameTimerId) clearInterval(gameTimerId);
+    if (gameTimerId) {
+        clearInterval(gameTimerId);
+        gameTimerId = null;
+    }
     gameTimerId = setInterval(() => {
-        gameTimeRemaining--;
-        updateTimerDisplay();
-        if (gameTimeRemaining <= 0) {
-            endGame("Time's up!");
+        if (!gameRunning) {
+            clearInterval(gameTimerId);
+            gameTimerId = null;
+            return;
+        }
+        
+        if (gameTimeRemaining > 0) {
+            gameTimeRemaining--;
+            updateTimerDisplay();
+            
+            // Check if time is up
+            if (gameTimeRemaining <= 0) {
+                clearInterval(gameTimerId);
+                gameTimerId = null;
+                endGame("Time's up!");
+            }
         }
     }, 1000);
 }
@@ -252,9 +295,19 @@ function updateTimerDisplay() {
 }
 
 function endGame(message) {
+    console.log('[main] endGame() called with message:', message);
+    console.log('[main] Scores - Player:', player.score, 'Opponent:', opponent.score);
     gameRunning = false;
-    if (gameTimerId) clearInterval(gameTimerId);
-    showMessage(message);
+    if (gameTimerId) {
+        clearInterval(gameTimerId);
+        gameTimerId = null;
+    }
+    if (message) {
+        console.log('[main] Showing game over message:', message);
+        showMessage(message, true);
+    } else {
+        console.warn('[main] endGame called without message');
+    }
 }
 
 function restartGame() {
