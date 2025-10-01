@@ -5,7 +5,7 @@ import { playSound } from './audio.js';
 const PADDLE_WIDTH = 100;  // Now horizontal width
 const PADDLE_HEIGHT = 15;  // Now horizontal height
 const BALL_RADIUS = 10;
-const WINNING_SCORE = 100;
+export const WINNING_SCORE = 100;
 const PADDLE_COLOR = '#00ffff';
 const BALL_COLOR = '#ffffff';
 const PADDLE_COLOR_SELF = '#ff00ff';
@@ -86,6 +86,11 @@ export function updateGame(useAI) {
     if (ball.x + ball.radius > canvas.width || ball.x - ball.radius < 0) {
         ball.velocityX = -ball.velocityX;
         playSound('wallBounce');
+        
+        // Add jitter to prevent horizontal loops
+        if (Math.abs(ball.velocityY) < 0.5) {
+            ball.velocityY += (Math.random() - 0.5) * 2; // Add a random vertical push
+        }
     }
 
     // Ball collision with paddles (now top/bottom paddles)

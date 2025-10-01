@@ -58,13 +58,19 @@ class EEGPongoController:
     async def connect(self):
         """Connect to the Pongo relay namespace and join a room"""
         try:
-            relay_url = self.server_url.rstrip('/') + '/relay'
-            await self.sio.connect(relay_url, transports=['websocket'])
-            await self.sio.emit('join', {
-                'roomId': self.room_id,
-                'name': 'EEG Controller'
-            })
-            print(f"[EEG] Joining room: {self.room_id} (/relay)", file=sys.stderr)
+            base_url = self.server_url.rstrip('/')
+            print(f"[EEG] Connecting to {base_url} (namespace=/relay)", file=sys.stderr)
+            await self.sio.connect(base_url, transports=['websocket'], namespaces=['/relay'])
+            self.connected = True  # mark connected after successful connect
+            try:
+                ack = await self.sio.call('join', {
+                    'roomId': self.room_id,
+                    'name': 'EEG Controller'
+                }, timeout=2.0, namespace='/relay')
+                print(f"[EEG] Join ack: {ack}", file=sys.stderr)
+            except Exception as e:
+                print(f"[EEG] Join ack failed (continuing): {e}", file=sys.stderr)
+            print(f"[EEG] Joined room: {self.room_id} (/relay)", file=sys.stderr)
         except Exception as e:
             print(f"[EEG] Error connecting: {e}", file=sys.stderr)
             raise
@@ -88,8 +94,9 @@ class EEGPongoController:
             # Send to relay namespace so browser can apply directly to Player 1
             await self.sio.emit('input', {
                 'paddleX': float(target_x),
-                'command': command
-            })
+                'command': command,
+                'roomId': self.room_id,
+            }, namespace='/relay')
 
             print(f"[EEG] -> P1 {command} (x={target_x:.2f})", file=sys.stderr)
 

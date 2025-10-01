@@ -20,9 +20,23 @@ The server will start on `http://localhost:3000`
 
 ### 3. Open the Game in Browser
 
-Navigate to: `http://localhost:3000/pongo/eeg-control`
+Open the game in a named room (the roomId is the last path segment):
 
-This creates a room called "eeg-control" that your EEG controller will join.
+- http://localhost:3000/pongo/brain-room
+
+In this example the roomId is `brain-room`.
+
+## Quick start: Simulated EEG → relay → browser (horizontal paddleX)
+
+Run the simulated EEG pipeline in another terminal:
+
+```bash
+python3 test_eeg_stream.py | python3 eeg_to_pongo.py --room brain-room
+```
+
+This streams left/neutral/right class predictions that are mapped to paddleX ≈ 0.2 / 0.5 / 0.8.
+Player 1’s paddle in the browser will move left/center/right accordingly.
+
 
 ## Usage
 
@@ -52,9 +66,9 @@ cat data.txt | python eeg_to_pongo.py
 
 The default mapping is:
 
-- **Class 0** → `left` (paddle moves up, y=0.2)
-- **Class 1** → `right` (paddle moves down, y=0.8)
-- **Class 2** → `neutral` (paddle centers, y=0.5)
+- **Class 0** → `left` (horizontal, paddleX ≈ 0.2)
+- **Class 1** → `right` (horizontal, paddleX ≈ 0.8)
+- **Class 2** → `neutral` (horizontal, paddleX ≈ 0.5)
 
 ### Custom Mapping
 
@@ -134,9 +148,9 @@ Check that your EEG script is outputting data in the correct format. You should 
 
 ### "Paddle not moving"
 
-1. Make sure you've opened the game in your browser at the correct room URL
-2. Check the console output - you should see `[EEG] Joined room 'eeg-control' as left paddle`
-3. Verify predictions are being received - you should see `[EEG] → left (y=0.20)` messages
+1. Make sure you've opened the game in your browser at the correct room URL (e.g., http://localhost:3000/pongo/brain-room)
+2. Check the EEG controller output - you should see `Joined room 'brain-room'` (or your room)
+3. Verify predictions are being received - you should see messages like `[EEG] -> P1 left (x=0.20)`
 
 ### Testing the connection
 
@@ -181,7 +195,7 @@ You can adjust these values to fine-tune the paddle positions.
 
 If you're training with 8 EEG channels, make sure your model outputs 3 classes:
 - Class 0: Left motor imagery
-- Class 1: Right motor imagery  
+- Class 1: Right motor imagery
 - Class 2: Neutral/rest state
 
 The controller will work with any number of input channels as long as the output format matches the expected prediction line format.

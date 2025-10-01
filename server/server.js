@@ -105,12 +105,26 @@ io.on('connection', (socket) => {
 const relay = io.of('/relay');
 relay.on('connection', (socket) => {
   let roomId = null;
-  socket.on('join', (p = {}, ack) => {
-    roomId = String(p.roomId || 'default'); socket.join(roomId);
+  socket.on('join', async (p = {}, ack) => {
+    roomId = String(p.roomId || 'default');
+    socket.join(roomId);
+    console.log('[relay] join', { room: roomId, socket: socket.id, name: p.name || 'anon' });
     ack && ack({ ok: true, roomId, userId: socket.id });
     socket.to(roomId).emit('user:join', { userId: socket.id, name: p.name || 'anon' });
   });
-  socket.on('input', (msg = {}) => { if (!roomId) return; relay.to(roomId).emit('input', { from: socket.id, ...msg }); });
+  socket.on('input', (msg = {}) => {
+    if (!roomId) return;
+    console.log('[relay] input', { room: roomId, from: socket.id, msg });
+    relay.to(roomId).emit('input', { from: socket.id, ...msg });
+  });
+  socket.on('client:log', (m = {}) => {
+    try {
+      const data = typeof m === 'object' ? m : { message: String(m) };
+      console.log('[relay:client]', roomId, socket.id, data.event || data.message || '', data.data || {});
+    } catch (e) {
+      console.error('[relay:client] log error', e);
+    }
+  });
   socket.on('state', (msg = {}) => { if (!roomId) return; socket.to(roomId).emit('state', msg); });
   socket.on('disconnect', () => { if (roomId) socket.to(roomId).emit('user:leave', { userId: socket.id }); });
 });

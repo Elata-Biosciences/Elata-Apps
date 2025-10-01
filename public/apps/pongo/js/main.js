@@ -1,6 +1,6 @@
 // Pongo/js/main.js
 
-import { initGame, updateGame, draw, player, computer, resetBall, ball } from './game.js';
+import { initGame, updateGame, draw, player, computer, resetBall, ball, WINNING_SCORE } from './game.js';
 import { initUI, updateScores, showMessage, hideMessage, hideStartOverlay, updateMuteButton, showToast } from './ui.js';
 import { initAudio, playSound, toggleMute } from './audio.js';
 import { initMultiplayer, setupSocket, stepMultiplayer, requestRestart } from './multiplayer.js';
@@ -45,13 +45,24 @@ function init() {
         }
     });
 
-    // EEG relay socket: listen for external inputs on /relay namespace and apply to Player 1
+    // EEG relay socket: listen for external inputs on /relay namespace.
+    // In single-player: apply directly to Player 1 paddle.
+    // In multiplayer: set a global override so rendering uses EEG position client-side (not server physics).
     try {
         const relaySock = io('/relay');
         relaySock.on('connect', () => {
-            try { relaySock.emit('join', { roomId: getRoomId(), name: 'EEG Relay' }); } catch {}
+            const room = getRoomId();
+            console.log('[EEG][client] relay connected, joining room', room);
+            try { relaySock.emit('join', { roomId: room, name: 'EEG Relay' }, (ack)=>{
+                console.log('[EEG][client] relay join ack', ack);
+                try { relaySock.emit('client:log', { event: 'relay_join', data: { room, ack } }); } catch {}
+            }); } catch (e) {
+                console.warn('[EEG][client] relay join error', e);
+                try { relaySock.emit('client:log', { event: 'relay_join_error', data: { room, error: String(e && e.message || e) } }); } catch {}
+            }
         });
         relaySock.on('input', (msg = {}) => {
+            console.log('[EEG][client] relay input', msg);
             // Support normalized center position: paddleX in [0,1]
             let xNorm = null;
             if (typeof msg.paddleX === 'number') xNorm = msg.paddleX;
@@ -63,9 +74,22 @@ function init() {
             }
             if (xNorm !== null && Number.isFinite(xNorm)) {
                 const clamped = Math.max(0, Math.min(1, Number(xNorm)));
-                const centerPx = clamped * canvas.width;
-                const leftPx = Math.max(0, Math.min(canvas.width - player.width, centerPx - player.width / 2));
-                player.x = leftPx;
+                // Expose global normalized center for multiplayer override
+                try { window.__EEG_X_NORM = clamped; window.__EEG_X_AT = performance.now(); } catch {}
+                // Apply directly only in single-player mode
+                if (!useMultiplayer) {
+                    const centerPx = clamped * canvas.width;
+                    const leftPx = Math.max(0, Math.min(canvas.width - player.width, centerPx - player.width / 2));
+                    player.x = leftPx;
+                    console.log('[EEG][client] applied to single-player paddle', { xNorm: clamped, leftPx, width: canvas.width });
+                    try { relaySock.emit('client:log', { event: 'eeg_input_applied', data: { xNorm: clamped, leftPx } }); } catch {}
+                } else {
+                    console.log('[EEG][client] multiplayer mode: not directly applying; multiplayer renderer will override');
+                    try { relaySock.emit('client:log', { event: 'eeg_input_override', data: { xNorm: clamped } }); } catch {}
+                }
+            } else {
+                console.warn('[EEG][client] invalid input payload, missing command/paddleX');
+                try { relaySock.emit('client:log', { event: 'eeg_input_invalid', data: { msg } }); } catch {}
             }
         });
     } catch {}
@@ -90,8 +114,8 @@ function gameLoop(now) {
         draw();
         updateScores(player.score, computer.score);
 
-        if (player.score >= 5 || computer.score >= 5) {
-            const message = player.score >= 5 ? "You Win!" : "Computer Wins!";
+        if (player.score >= WINNING_SCORE || computer.score >= WINNING_SCORE) {
+            const message = player.score >= WINNING_SCORE ? "You Win!" : "Computer Wins!";
             showMessage(message);
             gameRunning = false;
         }

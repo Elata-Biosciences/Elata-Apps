@@ -186,11 +186,28 @@ export function stepMultiplayer(now, player, computer, ball, canvas) {
     const ballX = lerp(a.ball.x, b.ball.x);
     const ballY = lerp(a.ball.y, b.ball.y);
 
-    // Predict local paddle from server baseline
+    // Predict local paddle from server baseline (or EEG override)
     // Prefer server-provided self baseline when available (recent rectify), else use interpolated
     const isBaseFresh = (SELF_BASE && (Math.abs((Date.now() + SERVER_OFFSET_MS) - (Number(SELF_BASE.serverT)||0)) < 250));
     let baseSelf = isBaseFresh ? SELF_BASE.selfX : (side === 'top' ? topX : bottomX);
+
+    // EEG override (client-side control, not sent to server)
+    try {
+      const eegAt = (typeof window !== 'undefined' && window.__EEG_X_AT) || 0;
+      if (eegAt && (performance.now() - eegAt) < 800) {
+        const eegX = Number(window.__EEG_X_NORM);
+        if (Number.isFinite(eegX)) {
+          baseSelf = Math.max(PADDLE_WIDTH_NORM / 2, Math.min(1 - PADDLE_WIDTH_NORM / 2, eegX));
+        }
+      }
+    } catch {}
+
     let selfX = side ? applyPrediction(baseSelf) : baseSelf;
+
+    if (baseSelf !== (side === 'top' ? topX : bottomX)) {
+      console.debug('[EEG][client] applying EEG override for self paddle', { baseSelf, side });
+      if (!side) console.warn('[EEG][client] override present but side not yet assigned (spectating).');
+    }
 
     const PADDLE_W = PADDLE_WIDTH_NORM * canvas.width;
     const localTarget = centerNormToPxLeft(selfX, PADDLE_W, canvas.width);
