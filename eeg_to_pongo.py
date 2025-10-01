@@ -56,16 +56,15 @@ class EEGPongoController:
         print(f"[EEG] Joined room '{self.room_id}' as {self.side} paddle (ID: {self.player_id})", file=sys.stderr)
         
     async def connect(self):
-        """Connect to the Pongo server and join a room as a spectator/input device"""
+        """Connect to the Pongo relay namespace and join a room"""
         try:
-            await self.sio.connect(self.server_url, namespaces=['/game'])
-            # Join as spectator but send input for left paddle (Player 1)
+            relay_url = self.server_url.rstrip('/') + '/relay'
+            await self.sio.connect(relay_url, transports=['websocket'])
             await self.sio.emit('join', {
                 'roomId': self.room_id,
-                'name': 'EEG Controller',
-                'spectator': True  # Join as spectator, not as a player
-            }, namespace='/game')
-            print(f"[EEG] Joining room: {self.room_id} (as input device for Player 1)", file=sys.stderr)
+                'name': 'EEG Controller'
+            })
+            print(f"[EEG] Joining room: {self.room_id} (/relay)", file=sys.stderr)
         except Exception as e:
             print(f"[EEG] Error connecting: {e}", file=sys.stderr)
             raise
@@ -76,26 +75,23 @@ class EEGPongoController:
             return
 
         try:
-            # Map command to paddle position (0.0 to 1.0)
+            # Map command to normalized X center position (0.0 = left, 1.0 = right)
             if command == 'neutral':
-                # Center position
-                target_y = 0.5
+                target_x = 0.5
             elif command == 'left':
-                # Move paddle up (y=0.2)
-                target_y = 0.2
+                target_x = 0.2
             elif command == 'right':
-                # Move paddle down (y=0.8)
-                target_y = 0.8
+                target_x = 0.8
             else:
                 return
-                
-            # Send paddle input to server for Player 1 (left paddle)
-            await self.sio.emit('input', {
-                'paddleY': target_y,
-                'side': 'left'  # explicitly control Player 1
-            }, namespace='/game')
 
-            print(f"[EEG] → P1 {command} (y={target_y:.2f})", file=sys.stderr)
+            # Send to relay namespace so browser can apply directly to Player 1
+            await self.sio.emit('input', {
+                'paddleX': float(target_x),
+                'command': command
+            })
+
+            print(f"[EEG] -> P1 {command} (x={target_x:.2f})", file=sys.stderr)
 
         except Exception as e:
             print(f"[EEG] Error sending command: {e}", file=sys.stderr)

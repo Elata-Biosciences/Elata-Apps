@@ -45,6 +45,31 @@ function init() {
         }
     });
 
+    // EEG relay socket: listen for external inputs on /relay namespace and apply to Player 1
+    try {
+        const relaySock = io('/relay');
+        relaySock.on('connect', () => {
+            try { relaySock.emit('join', { roomId: getRoomId(), name: 'EEG Relay' }); } catch {}
+        });
+        relaySock.on('input', (msg = {}) => {
+            // Support normalized center position: paddleX in [0,1]
+            let xNorm = null;
+            if (typeof msg.paddleX === 'number') xNorm = msg.paddleX;
+            if (typeof msg.command === 'string') {
+                const c = msg.command.toLowerCase();
+                if (c === 'left') xNorm = 0.2;
+                else if (c === 'right') xNorm = 0.8;
+                else if (c === 'neutral' || c === 'center' || c === 'centre') xNorm = 0.5;
+            }
+            if (xNorm !== null && Number.isFinite(xNorm)) {
+                const clamped = Math.max(0, Math.min(1, Number(xNorm)));
+                const centerPx = clamped * canvas.width;
+                const leftPx = Math.max(0, Math.min(canvas.width - player.width, centerPx - player.width / 2));
+                player.x = leftPx;
+            }
+        });
+    } catch {}
+
     // Check if start overlay exists
     const startOverlay = document.getElementById('startOverlay');
     const startButton = document.getElementById('startButton');

@@ -29,45 +29,45 @@ describe('assist rescue on near-miss', () => {
     await stop();
   });
 
-  test('rescues left side miss (reflects ball to the right instead of scoring)', async () => {
+  test('rescues top miss (reflects ball downward instead of scoring)', async () => {
     const a = await connectNS(base + '/game');
     const b = await connectNS(base + '/game');
-    const roomId = 'assist-left-1';
+    const roomId = 'assist-top-1';
     await new Promise((resolve) => a.emit('join', { roomId, name: 'A' }, resolve));
     await new Promise((resolve) => b.emit('join', { roomId, name: 'B' }, resolve));
 
-    // Put game into playing and force a left miss
-    await new Promise((resolve) => a.emit('test:set', { roundState: 'playing', ball: { x: -0.02, y: 0.5, vx: -0.3, vy: 0 } }, resolve));
+    // Put game into playing and force a top miss
+    await new Promise((resolve) => a.emit('test:set', { roundState: 'playing', ball: { x: 0.5, y: -0.02, vx: 0, vy: -0.3 } }, resolve));
 
     const state = await new Promise((resolve, reject) => {
       const to = setTimeout(() => reject(new Error('no state after assist')), 2000);
       a.once('state', (s) => { clearTimeout(to); resolve(s); });
     });
 
-    // Expect ball going right after rescue; no immediate score increment to right
-    expect(state.ball.vx).toBeGreaterThan(0);
-  
+    // Expect ball going down after rescue; no immediate score increment
+    expect(state.ball.vy).toBeGreaterThan(0);
+
     a.disconnect();
     b.disconnect();
   });
 
-  test('rescues right side miss (reflects ball to the left instead of scoring)', async () => {
+  test('rescues bottom miss (reflects ball upward instead of scoring)', async () => {
     const a = await connectNS(base + '/game');
     const b = await connectNS(base + '/game');
-    const roomId = 'assist-right-1';
+    const roomId = 'assist-bottom-1';
     await new Promise((resolve) => a.emit('join', { roomId, name: 'A' }, resolve));
     await new Promise((resolve) => b.emit('join', { roomId, name: 'B' }, resolve));
 
-    // Put game into playing and force a right miss
-    await new Promise((resolve) => a.emit('test:set', { roundState: 'playing', ball: { x: 1.02, y: 0.5, vx: 0.3, vy: 0 } }, resolve));
+    // Put game into playing and force a bottom miss
+    await new Promise((resolve) => a.emit('test:set', { roundState: 'playing', ball: { x: 0.5, y: 1.02, vx: 0, vy: 0.3 } }, resolve));
 
     const state = await new Promise((resolve, reject) => {
       const to = setTimeout(() => reject(new Error('no state after assist')), 2000);
       a.once('state', (s) => { clearTimeout(to); resolve(s); });
     });
 
-    // Expect ball going left after rescue
-    expect(state.ball.vx).toBeLessThan(0);
+    // Expect ball going up after rescue
+    expect(state.ball.vy).toBeLessThan(0);
 
     a.disconnect();
     b.disconnect();

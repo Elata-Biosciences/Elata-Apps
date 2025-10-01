@@ -27,6 +27,8 @@ app.get('/assets/pongo/favicon.svg', (_req, res) => res.sendFile(path.join(__dir
 // --- File logging to /logs (auto-enabled unless NO_FILE_LOG=1) ---
 (function setupFileLogging(){
   try {
+    // Disable file logging automatically during tests for speed and clean output
+    if (process.env.NODE_ENV === 'test') return;
     if (process.env.NO_FILE_LOG === '1') return;
     const logDir = path.join(__dirname, '..', 'logs');
     fs.mkdirSync(logDir, { recursive: true });
@@ -146,26 +148,26 @@ function maybeAssist(room, sideMissed) {
   try {
     if (!ENABLE_ASSIST) return false;
     if (!(ASSIST_PROB > 0) || Math.random() > ASSIST_PROB) return false;
-    const padH = PADDLE_HEIGHT;
-    if (sideMissed === 'left') {
-      // Place ball at hit position and reflect to the right
-      room.ball.x = PADDLE_WIDTH + BALL_RADIUS;
-      // Aim toward paddle center with slight randomness
-      const targetY = room.paddles.left.y;
-      const spin = (room.ball.y - targetY) / (padH / 2);
-      room.ball.vx = Math.max(0.25, Math.abs(room.ball.vx)) * BALL_SPEED_INCREASE_FACTOR;
-      room.ball.vy = room.ball.vy + spin * 0.25;
-    } else if (sideMissed === 'right') {
-      room.ball.x = 1 - PADDLE_WIDTH - BALL_RADIUS;
-      const targetY = room.paddles.right.y;
-      const spin = (room.ball.y - targetY) / (padH / 2);
-      room.ball.vx = -Math.max(0.25, Math.abs(room.ball.vx)) * BALL_SPEED_INCREASE_FACTOR;
-      room.ball.vy = room.ball.vy + spin * 0.25;
+    const padW = PADDLE_HEIGHT; // horizontal paddle span
+    if (sideMissed === 'top') {
+      // Place ball at hit position and reflect downward
+      room.ball.y = PADDLE_WIDTH + BALL_RADIUS;
+      const targetX = room.paddles.left.y; // left slot stores TOP paddle center X
+      const spin = (room.ball.x - targetX) / (padW / 2);
+      room.ball.vy = Math.max(0.25, Math.abs(room.ball.vy)) * BALL_SPEED_INCREASE_FACTOR;
+      room.ball.vx = room.ball.vx + spin * 0.25;
+    } else if (sideMissed === 'bottom') {
+      room.ball.y = 1 - PADDLE_WIDTH - BALL_RADIUS;
+      const targetX = room.paddles.right.y; // right slot stores BOTTOM paddle center X
+      const spin = (room.ball.x - targetX) / (padW / 2);
+      room.ball.vy = -Math.max(0.25, Math.abs(room.ball.vy)) * BALL_SPEED_INCREASE_FACTOR;
+      room.ball.vx = room.ball.vx + spin * 0.25;
     } else {
       return false;
     }
-    // Clamp vy a bit to avoid extreme angles
+    // Clamp velocities a bit to avoid extreme angles
     room.ball.vy = Math.max(-1.8, Math.min(1.8, room.ball.vy));
+    room.ball.vx = Math.max(-1.8, Math.min(1.8, room.ball.vx));
     console.log('[assist] rescued', room.id, { sideMissed, ball: { x: Number(room.ball.x).toFixed(3), y: Number(room.ball.y).toFixed(3), vx: Number(room.ball.vx).toFixed(3), vy: Number(room.ball.vy).toFixed(3) } });
     return true;
   } catch { return false; }
@@ -183,8 +185,6 @@ function createInitialGameState(id) {
     players: new Map(), // socketId -> { name, side, inputs: [] }
     sides: { left: null, right: null },
     spectators: new Set(),
-    // Optional: additional controllers per side (spectators that can send input)
-    controllers: { left: new Set(), right: new Set() },
     paddles: {
       left: { y: 0.5 },
       right: { y: 0.5 }
@@ -278,44 +278,44 @@ function tick(room) {
       room.ball.x += room.ball.vx * dt;
       room.ball.y += room.ball.vy * dt;
 
-      // Collide with top/bottom
-      if (room.ball.y <= BALL_RADIUS) { room.ball.y = BALL_RADIUS; room.ball.vy = Math.abs(room.ball.vy); }
-      if (room.ball.y >= 1 - BALL_RADIUS) { room.ball.y = 1 - BALL_RADIUS; room.ball.vy = -Math.abs(room.ball.vy); }
+      // Collide with left/right walls (reflect horizontal)
+      if (room.ball.x <= BALL_RADIUS) { room.ball.x = BALL_RADIUS; room.ball.vx = Math.abs(room.ball.vx); }
+      if (room.ball.x >= 1 - BALL_RADIUS) { room.ball.x = 1 - BALL_RADIUS; room.ball.vx = -Math.abs(room.ball.vx); }
 
-      // Left paddle collision
-      if (room.ball.vx < 0 && room.ball.x <= PADDLE_WIDTH + BALL_RADIUS) {
+      // Top paddle collision (stored in left slot; value is center X)
+      if (room.ball.vy < 0 && room.ball.y <= PADDLE_WIDTH + BALL_RADIUS) {
+        const padCenterXTop = room.paddles.left.y;
+        if (Math.abs(room.ball.x - padCenterXTop) <= padH / 2) {
+          room.ball.y = PADDLE_WIDTH + BALL_RADIUS;
+          // Increase vertical speed slightly on paddle hit
+          room.ball.vy = Math.abs(room.ball.vy) * BALL_SPEED_INCREASE_FACTOR;
+          if (Math.abs(room.ball.vy) > MAX_BALL_SPEED) room.ball.vy = Math.sign(room.ball.vy) * MAX_BALL_SPEED;
 
-
-        if (Math.abs(room.ball.y - room.paddles.left.y) <= padH / 2) {
-          room.ball.x = PADDLE_WIDTH + BALL_RADIUS;
-          // Increase horizontal speed slightly on paddle hit
-          room.ball.vx = Math.abs(room.ball.vx) * BALL_SPEED_INCREASE_FACTOR;
-          if (Math.abs(room.ball.vx) > MAX_BALL_SPEED) room.ball.vx = Math.sign(room.ball.vx) * MAX_BALL_SPEED;
-
-          const spin = (room.ball.y - room.paddles.left.y) / (padH / 2);
-          room.ball.vy += spin * 0.3;
-        } else if (room.ball.x < 0) {
-          if (!maybeAssist(room, 'left')) {
-            // Right scores
-            console.log('[game] score', room.id, 'right', 'ball=', { x: room.ball.x.toFixed(3), y: room.ball.y.toFixed(3) });
+          const spin = (room.ball.x - padCenterXTop) / (padH / 2);
+          room.ball.vx += spin * 0.3;
+        } else if (room.ball.y < 0) {
+          if (!maybeAssist(room, 'top')) {
+            // Bottom scores (mapped to 'right')
+            console.log('[game] score', room.id, 'bottom', 'ball=', { x: room.ball.x.toFixed(3), y: room.ball.y.toFixed(3) });
             room.scores.right += 1;
             startNewRound(room);
           }
         }
       }
-      // Right paddle collision
-      if (room.ball.vx > 0 && room.ball.x >= 1 - PADDLE_WIDTH - BALL_RADIUS) {
-        if (Math.abs(room.ball.y - room.paddles.right.y) <= padH / 2) {
-          room.ball.x = 1 - PADDLE_WIDTH - BALL_RADIUS;
-          room.ball.vx = -Math.abs(room.ball.vx) * BALL_SPEED_INCREASE_FACTOR;
-          if (Math.abs(room.ball.vx) > MAX_BALL_SPEED) room.ball.vx = Math.sign(room.ball.vx) * MAX_BALL_SPEED;
+      // Bottom paddle collision (stored in right slot; value is center X)
+      if (room.ball.vy > 0 && room.ball.y >= 1 - PADDLE_WIDTH - BALL_RADIUS) {
+        const padCenterXBottom = room.paddles.right.y;
+        if (Math.abs(room.ball.x - padCenterXBottom) <= padH / 2) {
+          room.ball.y = 1 - PADDLE_WIDTH - BALL_RADIUS;
+          room.ball.vy = -Math.abs(room.ball.vy) * BALL_SPEED_INCREASE_FACTOR;
+          if (Math.abs(room.ball.vy) > MAX_BALL_SPEED) room.ball.vy = Math.sign(room.ball.vy) * MAX_BALL_SPEED;
 
-          const spin = (room.ball.y - room.paddles.right.y) / (padH / 2);
-          room.ball.vy += spin * 0.3;
-        } else if (room.ball.x > 1) {
-          if (!maybeAssist(room, 'right')) {
-            // Left scores
-            console.log('[game] score', room.id, 'left', 'ball=', { x: room.ball.x.toFixed(3), y: room.ball.y.toFixed(3) });
+          const spin = (room.ball.x - padCenterXBottom) / (padH / 2);
+          room.ball.vx += spin * 0.3;
+        } else if (room.ball.y > 1) {
+          if (!maybeAssist(room, 'bottom')) {
+            // Top scores (mapped to 'left')
+            console.log('[game] score', room.id, 'top', 'ball=', { x: room.ball.x.toFixed(3), y: room.ball.y.toFixed(3) });
             room.scores.left += 1;
             startNewRound(room);
           }
@@ -332,7 +332,10 @@ function tick(room) {
   };
   const state = {
     t: now,
-    paddles: { left: room.paddles.left.y, right: room.paddles.right.y },
+    paddles: {
+      left: room.paddles.left.y, right: room.paddles.right.y,
+      top: room.paddles.left.y, bottom: room.paddles.right.y,
+    },
     ball: room.ball,
     scores: room.scores,
     roundState: room.roundState,
@@ -360,37 +363,38 @@ function tick(room) {
       game.to(socketId).emit('rectify', rectify);
     }
   } catch (e) {
-function sanitizeBall(b = {}) {
-  try {
-    const x = Math.max(-0.2, Math.min(1.2, Number(b.x)));
-    const y = Math.max(-0.2, Math.min(1.2, Number(b.y)));
-    let vx = Number(b.vx); let vy = Number(b.vy);
-    if (!Number.isFinite(vx)) vx = 0; if (!Number.isFinite(vy)) vy = 0;
-    const max = MAX_BALL_SPEED * 2;
-    vx = Math.max(-max, Math.min(max, vx));
-    vy = Math.max(-max, Math.min(max, vy));
-    return { x, y, vx, vy };
-  } catch { return { x: 0.5, y: 0.5, vx: 0, vy: 0 }; }
-}
-
-function emitRectify(room, ball, reason = 'rectify') {
-  try {
-    const tDecision = Date.now();
-    game.to(room.id).emit('rectifyDecision', { tDecision, ball, scores: room.scores, reason });
-  } catch {}
-}
-
-function acceptScore(room, sideFor) {
-  try {
-    if (sideFor !== 'left' && sideFor !== 'right') return;
-    room.scores[sideFor] += 1;
-    const tDecision = Date.now();
-    game.to(room.id).emit('scoreUpdate', { scores: room.scores, tDecision });
-    startNewRound(room);
-  } catch {}
-}
-
     // non-fatal
+  }
+
+  // Helper functions for client-authoritative flow
+  function sanitizeBall(b = {}) {
+    try {
+      const x = Math.max(-0.2, Math.min(1.2, Number(b.x)));
+      const y = Math.max(-0.2, Math.min(1.2, Number(b.y)));
+      let vx = Number(b.vx); let vy = Number(b.vy);
+      if (!Number.isFinite(vx)) vx = 0; if (!Number.isFinite(vy)) vy = 0;
+      const max = MAX_BALL_SPEED * 2;
+      vx = Math.max(-max, Math.min(max, vx));
+      vy = Math.max(-max, Math.min(max, vy));
+      return { x, y, vx, vy };
+    } catch { return { x: 0.5, y: 0.5, vx: 0, vy: 0 }; }
+  }
+
+  function emitRectify(room, ball, reason = 'rectify') {
+    try {
+      const tDecision = Date.now();
+      game.to(room.id).emit('rectifyDecision', { tDecision, ball, scores: room.scores, reason });
+    } catch {}
+  }
+
+  function acceptScore(room, sideFor) {
+    try {
+      if (sideFor !== 'left' && sideFor !== 'right') return;
+      room.scores[sideFor] += 1;
+      const tDecision = Date.now();
+      game.to(room.id).emit('scoreUpdate', { scores: room.scores, tDecision });
+      startNewRound(room);
+    } catch {}
   }
 
   if (DEBUG_GAME) {
@@ -426,8 +430,8 @@ function startNewRound(room) {
 function resetBall(room, dir) {
   room.ball.x = 0.5;
   room.ball.y = 0.5;
-  room.ball.vx = dir * INITIAL_BALL_SPEED;
-  room.ball.vy = (Math.random() * 0.4 - 0.2);
+  room.ball.vy = dir * INITIAL_BALL_SPEED; // serve vertically for top/bottom
+  room.ball.vx = (Math.random() * 0.4 - 0.2);
   console.log('[game] resetBall', room.id, 'vx=', room.ball.vx.toFixed(3), 'vy=', room.ball.vy.toFixed(3));
 }
 
@@ -494,37 +498,56 @@ game.on('connection', (socket) => {
       socket.on('client:log', (msg = {}) => {
         try {
           const m = typeof msg === 'object' ? msg : { message: String(msg) };
-
-	      // Test-only hook to mutate room state deterministically
-	      if (process.env.NODE_ENV === 'test') {
-	        socket.on('test:set', (patch = {}, ack) => {
-	          try {
-	            if (!roomId) return ack && ack({ ok: false, error: 'no room' });
-	            const room = rooms.get(roomId);
-	            if (!room) return ack && ack({ ok: false, error: 'no room' });
-	            if (patch.roundState) room.roundState = String(patch.roundState);
-	            if (patch.ball && typeof patch.ball === 'object') {
-	              const b = patch.ball;
-	              if (typeof b.x === 'number') room.ball.x = b.x;
-	              if (typeof b.y === 'number') room.ball.y = b.y;
-	              if (typeof b.vx === 'number') room.ball.vx = b.vx;
-	              if (typeof b.vy === 'number') room.ball.vy = b.vy;
-	            }
-	            if (patch.paddles && typeof patch.paddles === 'object') {
-	              const p = patch.paddles;
-	              if (p.left && typeof p.left.y === 'number') room.paddles.left.y = p.left.y;
-	              if (p.right && typeof p.right.y === 'number') room.paddles.right.y = p.right.y;
-	            }
-	            ack && ack({ ok: true });
-	          } catch (e) { ack && ack({ ok: false, error: 'bad patch' }); }
-	        });
-	      }
-
           console.log('[client]', roomId, side, socket.id, m.event || m.message || '', m.data || {});
         } catch (e) {
           console.error('[client] log error', e);
         }
       });
+
+      // Test-only hook to mutate room state deterministically (registered eagerly)
+      if (process.env.NODE_ENV === 'test') {
+        socket.on('test:set', (patch = {}, ack) => {
+          try {
+            if (!roomId) return ack && ack({ ok: false, error: 'no room' });
+            const room = rooms.get(roomId);
+            if (!room) return ack && ack({ ok: false, error: 'no room' });
+            if (patch.roundState) room.roundState = String(patch.roundState);
+            if (patch.ball && typeof patch.ball === 'object') {
+              const b = patch.ball;
+              if (typeof b.x === 'number') room.ball.x = b.x;
+              if (typeof b.y === 'number') room.ball.y = b.y;
+              if (typeof b.vx === 'number') room.ball.vx = b.vx;
+              if (typeof b.vy === 'number') room.ball.vy = b.vy;
+            }
+            if (patch.paddles && typeof patch.paddles === 'object') {
+              const p = patch.paddles;
+              if (p.left && typeof p.left.y === 'number') room.paddles.left.y = p.left.y;
+              if (p.right && typeof p.right.y === 'number') room.paddles.right.y = p.right.y;
+            }
+            // Immediately broadcast a state snapshot so tests can observe the patch
+            try {
+              const now = Date.now();
+              const state = {
+                t: now,
+                paddles: {
+                  left: room.paddles.left.y, right: room.paddles.right.y,
+                  top: room.paddles.left.y, bottom: room.paddles.right.y,
+                },
+                ball: room.ball,
+                scores: room.scores,
+                roundState: room.roundState,
+                roundTimer: room.roundTimer,
+                lastSeq: {
+                  left: room.sides.left ? (room.players.get(room.sides.left)?.lastProcessedSeq || 0) : 0,
+                  right: room.sides.right ? (room.players.get(room.sides.right)?.lastProcessedSeq || 0) : 0,
+                },
+              };
+              game.to(room.id).emit('state', state);
+            } catch {}
+            ack && ack({ ok: true });
+          } catch (e) { ack && ack({ ok: false, error: 'bad patch' }); }
+        });
+      }
 
       // Allow clients to request a restart/new round
       socket.on('game:restart', () => {
@@ -561,17 +584,9 @@ game.on('connection', (socket) => {
 
   // Backward compatible input handler + queued input with rate limiting
   socket.on('input', (payload = {}) => {
-    if (!roomId) return;
+    if (!roomId || !side) return;
     const room = rooms.get(roomId);
     if (!room) return;
-
-    // Determine which side this input targets
-    let targetSide = side; // player's own side if assigned
-    if (!targetSide) {
-      const pSide = String(payload.side || payload.player || '').toLowerCase();
-      if (pSide === 'left' || pSide === 'right') targetSide = pSide;
-    }
-    if (targetSide !== 'left' && targetSide !== 'right') return;
 
     const player = room.players.get(socket.id);
 
@@ -586,39 +601,48 @@ game.on('connection', (socket) => {
 
     // New model: queued move input with seq (players only)
     const hasSeq = Number.isFinite(Number(payload.seq));
-    if (player && hasSeq && (payload.action === 'move') && (payload.direction === 'up' || payload.direction === 'down')) {
-      if (rl && rl.tokens < 1) return; // drop if over rate
-      const seq = Number(payload.seq);
-      if (seq > player.lastProcessedSeq) {
-        if (player.inputs.length < MAX_INPUT_QUEUE) {
-          player.inputs.push({ action: 'move', direction: payload.direction, seq });
-          player.lastProcessedSeq = seq;
-          if (rl) rl.tokens -= 1;
+    if (player && hasSeq && (payload.action === 'move')) {
+      // Normalize direction: accept 'up/down' and 'left/right' as equivalents (horizontal alias)
+      let dir = String(payload.direction || '').toLowerCase();
+      if (dir === 'left') dir = 'up';
+      if (dir === 'right') dir = 'down';
+      if (dir === 'up' || dir === 'down') {
+        if (rl && rl.tokens < 1) return; // drop if over rate
+        const seq = Number(payload.seq);
+        if (seq > player.lastProcessedSeq) {
+          if (player.inputs.length < MAX_INPUT_QUEUE) {
+            player.inputs.push({ action: 'move', direction: dir, seq });
+            player.lastProcessedSeq = seq;
+            if (rl) rl.tokens -= 1;
+          }
         }
+        return;
       }
+    }
+
+    // Absolute paddle position from client (accept both paddleX and paddleY; treat as normalized center)
+    const absPos = Number.isFinite(Number(payload.paddleX)) ? Number(payload.paddleX) : Number(payload.paddleY);
+    if (Number.isFinite(absPos)) {
+      const clampY = Math.max(PADDLE_HEIGHT / 2, Math.min(1 - PADDLE_HEIGHT / 2, absPos));
+      room.paddles[side].y = clampY;
+      // Emit both keys for compatibility
+      socket.to(roomId).emit('input', { side, paddleY: clampY, paddleX: clampY });
       return;
     }
 
-    // Legacy: absolute paddle position from client (clamped)
-    const y = Number(payload.paddleY);
-    if (Number.isFinite(y)) {
-      const clampY = Math.max(PADDLE_HEIGHT / 2, Math.min(1 - PADDLE_HEIGHT / 2, y));
-      room.paddles[targetSide].y = clampY;
-      socket.to(roomId).emit('input', { side: targetSide, paddleY: clampY });
-      return;
-    }
-
-    // Legacy: directional step inputs without seq
+    // Legacy: directional step inputs without seq (accept left/right as alias)
     if (typeof payload.dir === 'string') {
-      const d = payload.dir.toLowerCase();
+      let d = payload.dir.toLowerCase();
+      if (d === 'left') d = 'up';
+      if (d === 'right') d = 'down';
       if (d === 'up' || d === 'down') {
         if (rl && rl.tokens < 1) return; // rate limit legacy too
         const step = Number.isFinite(payload.step) ? Math.max(0, Math.min(0.2, Number(payload.step))) : 0.04;
         const dy = d === 'up' ? -step : step;
-        const current = room.paddles[targetSide].y;
+        const current = room.paddles[side].y;
         const next = Math.max(PADDLE_HEIGHT / 2, Math.min(1 - PADDLE_HEIGHT / 2, current + dy));
-        room.paddles[targetSide].y = next;
-        socket.to(roomId).emit('input', { side: targetSide, paddleY: next, dir: d });
+        room.paddles[side].y = next;
+        socket.to(roomId).emit('input', { side, paddleY: next, paddleX: next, dir: d });
         if (rl) rl.tokens -= 1;
       }
       return;
