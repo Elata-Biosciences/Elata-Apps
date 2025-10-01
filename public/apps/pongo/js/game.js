@@ -1,11 +1,9 @@
-// Pongo/js/game.js
 import { playSound } from './audio.js';
 
-// Game constants
 const PADDLE_WIDTH = 100;  // Now horizontal width
 const PADDLE_HEIGHT = 15;  // Now horizontal height
 const BALL_RADIUS = 10;
-export const WINNING_SCORE = 100;
+const WINNING_SCORE = 100;
 const PADDLE_COLOR = '#00ffff';
 const BALL_COLOR = '#ffffff';
 const PADDLE_COLOR_SELF = '#ff00ff';
@@ -19,7 +17,7 @@ const MAX_SPEED_MULTIPLIER = 1.35;
 let speedMultiplier = 1.0;
 
 // Game objects
-export let player = {
+let player = {
     x: 0,
     y: 0,
     width: PADDLE_WIDTH,
@@ -28,7 +26,7 @@ export let player = {
     score: 0
 };
 
-export let computer = {
+let opponent = {
     x: 0,
     y: 0,
     width: PADDLE_WIDTH,
@@ -37,7 +35,7 @@ export let computer = {
     score: 0
 };
 
-export let ball = {
+let ball = {
     x: 0,
     y: 0,
     radius: BALL_RADIUS,
@@ -49,18 +47,18 @@ export let ball = {
 
 let canvas, ctx;
 
-export function initGame(canvasElement, context) {
+function initGame(canvasElement, context) {
     canvas = canvasElement;
     ctx = context;
     // Position paddles horizontally - player at bottom, computer at top
     player.y = canvas.height - (PADDLE_HEIGHT * 2);
     player.x = canvas.width / 2 - PADDLE_WIDTH / 2;
-    computer.y = PADDLE_HEIGHT;
-    computer.x = canvas.width / 2 - PADDLE_WIDTH / 2;
+    opponent.y = PADDLE_HEIGHT;
+    opponent.x = canvas.width / 2 - PADDLE_WIDTH / 2;
     resetBall();
 }
 
-export function resetBall() {
+function resetBall() {
     ball.x = canvas.width / 2;
     ball.y = canvas.height / 2;
     ball.speed = 7;
@@ -69,13 +67,13 @@ export function resetBall() {
     ball.velocityY = (Math.random() > 0.5 ? 1 : -1) * 5;
 }
 
-export function updateGame(useAI) {
+function updateGameState(useAI) {
     if (useAI) {
         // AI paddle movement - now horizontal movement following ball X position
-        let targetX = ball.x - computer.width / 2;
-        computer.x += (targetX - computer.x) * 0.1;
+        let targetX = ball.x - opponent.width / 2;
+        opponent.x += (targetX - opponent.x) * 0.1;
         // Keep computer paddle within bounds
-        computer.x = Math.max(0, Math.min(canvas.width - computer.width, computer.x));
+        opponent.x = Math.max(0, Math.min(canvas.width - opponent.width, opponent.x));
     }
 
     // Ball movement
@@ -86,7 +84,7 @@ export function updateGame(useAI) {
     if (ball.x + ball.radius > canvas.width || ball.x - ball.radius < 0) {
         ball.velocityX = -ball.velocityX;
         playSound('wallBounce');
-        
+
         // Add jitter to prevent horizontal loops
         if (Math.abs(ball.velocityY) < 0.5) {
             ball.velocityY += (Math.random() - 0.5) * 2; // Add a random vertical push
@@ -94,11 +92,11 @@ export function updateGame(useAI) {
     }
 
     // Ball collision with paddles (now top/bottom paddles)
-    let paddle = (ball.y < canvas.height / 2) ? computer : player;
-    if (collision(ball, paddle)) {
+    let currentPaddle = (ball.y < canvas.height / 2) ? opponent : player;
+    if (collision(ball, currentPaddle)) {
         playSound('paddleHit');
-        let collidePoint = (ball.x - (paddle.x + paddle.width / 2));
-        collidePoint = collidePoint / (paddle.width / 2);
+        let collidePoint = (ball.x - (currentPaddle.x + currentPaddle.width / 2));
+        collidePoint = collidePoint / (currentPaddle.width / 2);
         let angleRad = (Math.PI / 4) * collidePoint;
         let direction = (ball.y < canvas.height / 2) ? 1 : -1;
         ball.velocityY = direction * ball.speed * Math.cos(angleRad);
@@ -115,7 +113,7 @@ export function updateGame(useAI) {
         playSound('playerScore');
         resetBall();
     } else if (ball.y + ball.radius > canvas.height) {
-        computer.score++; // Computer scores when ball exits bottom
+        opponent.score++; // Computer scores when ball exits bottom
         playSound('computerScore');
         resetBall();
     }
@@ -135,7 +133,7 @@ function collision(b, p) {
     return p.left < b.right && p.top < b.bottom && p.right > b.left && p.bottom > b.top;
 }
 
-export function draw() {
+function draw() {
     // Clear canvas with a semi-transparent black for motion blur effect
     ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -144,7 +142,7 @@ export function draw() {
 
     // Draw paddles with glow
     drawRect(player.x, player.y, player.width, player.height, PADDLE_COLOR);
-    drawRect(computer.x, computer.y, computer.width, computer.height, PADDLE_COLOR);
+    drawRect(opponent.x, opponent.y, opponent.width, opponent.height, PADDLE_COLOR);
 
     // Draw ball with glow
     drawCircle(ball.x, ball.y, ball.radius, BALL_COLOR);
@@ -177,6 +175,18 @@ function drawCircle(x, y, r, color) {
     ctx.shadowBlur = 0;
 }
 
-export function setSpeedMultiplier(multiplier) {
+function setSpeedMultiplier(multiplier) {
     speedMultiplier = multiplier;
 }
+
+export {
+    initGame,
+    resetBall,
+    updateGameState,
+    draw,
+    setSpeedMultiplier,
+    player,
+    opponent,
+    ball,
+    WINNING_SCORE
+};
