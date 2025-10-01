@@ -19,12 +19,11 @@ let gameTimerId;
 const GAME_DURATION = 60; // in seconds
 let gameTimeRemaining = GAME_DURATION;
 
-// EEG Discrete Positioning
-const EEG_LEFT_POSITION = 0.2;    // Left position (20% from left)
-const EEG_CENTER_POSITION = 0.5;  // Center position
-const EEG_RIGHT_POSITION = 0.8;   // Right position (80% from left)
-const EEG_THRESHOLD = 0.45;       // Probability threshold to trigger movement
-let currentEEGPosition = EEG_CENTER_POSITION; // Track current discrete position
+// EEG Incremental Movement
+const EEG_MOVE_AMOUNT = 5;        // Pixels to move when threshold is triggered
+const EEG_LEFT_THRESHOLD = 0.35;  // If input < this, move left
+const EEG_RIGHT_THRESHOLD = 0.65; // If input > this, move right
+// If input is between thresholds, don't move (neutral zone)
 
 function getRoomId() {
     // Prioritize URL query parameter for room selection
@@ -101,7 +100,7 @@ function init() {
                 return; // Mouse has priority
             }
 
-            // Discrete position control with thresholding
+            // Incremental movement with thresholding
             let inputValue = null;
             
             if (typeof msg.paddleX === 'number') {
@@ -115,30 +114,27 @@ function init() {
             }
             
             if (inputValue !== null && Number.isFinite(inputValue)) {
-                // Discrete thresholding: only move to specific positions with clear signals
-                // Define zones: < 0.35 = left, > 0.65 = right, else stay put
-                let targetPosition = currentEEGPosition; // Default: don't move
+                // Get current paddle position
+                let currentX = player.targetX;
+                let newX = currentX; // Default: don't move
                 
-                if (inputValue < 0.35) {
-                    // Strong left signal
-                    targetPosition = EEG_LEFT_POSITION;
-                } else if (inputValue > 0.65) {
-                    // Strong right signal
-                    targetPosition = EEG_RIGHT_POSITION;
+                // Threshold-based incremental movement
+                if (inputValue < EEG_LEFT_THRESHOLD) {
+                    // Strong left signal → move left by fixed amount
+                    newX = currentX - EEG_MOVE_AMOUNT;
+                    console.log('[EEG] Move LEFT');
+                } else if (inputValue > EEG_RIGHT_THRESHOLD) {
+                    // Strong right signal → move right by fixed amount
+                    newX = currentX + EEG_MOVE_AMOUNT;
+                    console.log('[EEG] Move RIGHT');
                 }
-                // Middle zone (0.35-0.65): stay at current position (no jank)
+                // Neutral zone (between thresholds): don't move (stay put)
                 
-                // Update current position if changed
-                if (targetPosition !== currentEEGPosition) {
-                    currentEEGPosition = targetPosition;
-                    console.log('[EEG] Position change:', targetPosition === EEG_LEFT_POSITION ? 'LEFT' : targetPosition === EEG_RIGHT_POSITION ? 'RIGHT' : 'CENTER');
-                }
+                // Apply bounds and set new position
+                newX = Math.max(0, Math.min(canvas.width - player.width, newX));
+                setPlayerTargetX(newX);
                 
-                // Apply the discrete position
-                const centerPx = currentEEGPosition * canvas.width;
-                const leftPx = Math.max(0, Math.min(canvas.width - player.width, centerPx - player.width / 2));
-                setPlayerTargetX(leftPx);
-                try { relaySock.emit('client:log', { event: 'eeg_discrete_position', data: { inputValue, targetPosition: currentEEGPosition, leftPx } }); } catch {}
+                try { relaySock.emit('client:log', { event: 'eeg_incremental_move', data: { inputValue, oldX: currentX, newX } }); } catch {}
             } else {
                 console.warn('[EEG][client] invalid input payload');
             }
