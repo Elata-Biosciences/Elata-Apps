@@ -1,6 +1,6 @@
 // Pongo/js/main.js
 
-import { initUI, updateScores, showMessage, showToast, hideStartOverlay, hideMessage } from './ui.js';
+import { initUI, updateScores, showMessage, showToast, hideStartOverlay, hideMessage, updateCountdown, hideCountdown, updateGameTimer } from './ui.js';
 import { initGame, updateGameState, draw, player, opponent, ball, resetBall, WINNING_SCORE } from './game.js';
 import { initAudio, playSound, toggleMute } from './audio.js';
 
@@ -11,6 +11,8 @@ let useMultiplayer = false;
 let gameRunning = false;
 let eegControlActive = false; // New state variable
 let animationFrameId;
+let gameTimerId;
+let gameTimeRemaining = 300; // 5 minutes in seconds
 
 function getRoomId() {
     // Prioritize URL query parameter for room selection
@@ -120,16 +122,13 @@ function gameLoop() {
         return;
     }
 
-    updateGameState(!useMultiplayer); // Pass true for useAI if not in multiplayer
+    updateGameState(!useMultiplayer);
     draw();
 
-    // Check for winner
     if (player.score >= WINNING_SCORE) {
-        showMessage(`You win! Final Score: ${player.score} - ${opponent.score}`);
-        gameRunning = false;
+        endGame(`You win! Final Score: ${player.score} - ${opponent.score}`);
     } else if (opponent.score >= WINNING_SCORE) {
-        showMessage(`Computer wins! Final Score: ${opponent.score} - ${player.score}`);
-        gameRunning = false;
+        endGame(`Computer wins! Final Score: ${opponent.score} - ${player.score}`);
     }
 
     if (gameRunning) {
@@ -192,103 +191,87 @@ function initMultiplayer(isLocal) {
 
 async function startGame() {
     console.log('[main] startGame() called');
-
-    const startButton = document.getElementById('startButton');
-    if (startButton) {
-        startButton.disabled = true;
-        startButton.textContent = 'Loading...';
-    }
-
-    console.log('[main] Initializing audio...');
-    const audioInitialized = await initAudio();
-    console.log('[main] Audio initialized:', audioInitialized);
-
-    if (!audioInitialized) {
-        showToast("Audio could not be initialized.");
-    }
-
-    hideStartOverlay();
-    gameRunning = true;
-    startSinglePlayer();
-}
-
-function restartGame() {
-    player.score = 0;
-    opponent.score = 0;
-    resetBall();
     hideMessage();
-    gameRunning = true;
-}
-
-function startSinglePlayer() {
-    useMultiplayer = false;
     hideStartOverlay();
-    gameRunning = true;
-    showToast("Single player mode (vs AI)");
-}
 
-function startMultiplayer(n = 2) {
-    useMultiplayer = true;
-    setupSocket(getRoomId(), { maxPlayers: Math.max(2, Math.min(4, Number(n)||2)) });
-    hideStartOverlay();
-    gameRunning = true;
-    const playerCount = Math.max(2, Math.min(4, Number(n)||2));
-    showToast(`Multiplayer mode (${playerCount} player${playerCount > 1 ? 's' : ''})`);
-}
-
-function selectPlayers(n) {
-    if (Number(n) === 1) startSinglePlayer();
-    else startMultiplayer(n);
-}
-
-function autoDetectMode() {
-    // This is now the default action for the main start button
-    hideStartOverlay();
-    gameRunning = true;
-    showToast("Connecting to server...");
-
-    // Join the room first to see if anyone is there
-    let hasStarted = false;
-
-    setupSocket(getRoomId(), {
-        autoDetect: true,
-        onRoomState: (state) => {
-            // state will contain: { playerCount, isAlone, newPlayer }
-            if (!hasStarted) {
-                // Initial join
-                if (state.isAlone) {
-                    // Nobody else in room, start in AI mode
-                    useMultiplayer = false;
-                    showToast("Playing vs AI (waiting for opponent...)");
-                } else {
-                    // Someone else is here, start in multiplayer
-                    useMultiplayer = true;
-                    showToast("Multiplayer mode");
-                }
-                hasStarted = true;
-            } else if (state.newPlayer && !state.isAlone) {
-                // Someone joined while we were playing AI
-                if (!useMultiplayer) {
-                    useMultiplayer = true;
-                    showToast("Opponent joined! Switching to multiplayer");
-                }
-            }
+    // Initialize audio on the first user gesture
+    initAudio().then(success => {
+        console.log('[main] Audio initialized:', success);
+        if (success) {
+            // Start countdown after audio is ready
+            startCountdown(3);
+        } else {
+            // If audio fails, still start countdown
+            startCountdown(3);
         }
     });
 }
 
-// Initialize the game when the script is loaded
+function startCountdown(seconds) {
+    let count = seconds;
+    const countdownInterval = setInterval(() => {
+        updateCountdown(count);
+        playSound('countdown');
+        count--;
+        if (count < 0) {
+            clearInterval(countdownInterval);
+            hideCountdown();
+            actuallyStartGame();
+        }
+    }, 1000);
+}
 
-// Toolbar restart button handler
-const restartGameButton = document.getElementById('restartGameButton');
-if (restartGameButton) restartGameButton.addEventListener('click', () => {
-    if (useMultiplayer) {
-        try { requestRestart(); } catch {}
-        showToast('Restart requested…');
-    } else {
-        restartGame();
-        showToast('Restarted');
+function actuallyStartGame() {
+    player.score = 0;
+    opponent.score = 0;
+    updateScores(player.score, opponent.score);
+    resetBall();
+    gameRunning = true;
+    gameTimeRemaining = 300;
+    updateTimerDisplay();
+    startTimer();
+    // The gameLoop is already running via requestAnimationFrame,
+    // it will pick up the gameRunning = true state.
+}
+
+function startTimer() {
+    if (gameTimerId) clearInterval(gameTimerId);
+    gameTimerId = setInterval(() => {
+        gameTimeRemaining--;
+        updateTimerDisplay();
+        if (gameTimeRemaining <= 0) {
+            endGame("Time's up!");
+        }
+    }, 1000);
+}
+
+function updateTimerDisplay() {
+    const minutes = Math.floor(gameTimeRemaining / 60);
+    const seconds = gameTimeRemaining % 60;
+    updateGameTimer(minutes, seconds);
+}
+
+function endGame(message) {
+    gameRunning = false;
+    if (gameTimerId) clearInterval(gameTimerId);
+    showMessage(message);
+}
+
+function restartGame() {
+    console.log('[main] restartGame() called');
+    endGame(); // Clear timers and stop loop
+    hideMessage();
+    player.score = 0;
+    opponent.score = 0;
+    updateScores(player.score, opponent.score);
+    resetBall();
+    startCountdown(3);
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    try {
+        init();
+    } catch (e) {
+        console.error('[main] init error', e);
     }
 });
-
-init();

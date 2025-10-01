@@ -2,11 +2,12 @@
 
 import { setSpeedMultiplier } from './game.js';
 
-let playerScoreElem, computerScoreElem, messageBox, messageText, restartButton, muteButton, speedButton, speedModal, closeSpeedModal, countdownElem, startOverlay, toast;
+let playerScoreElem, computerScoreElem, messageBox, messageText, restartButton, muteButton, speedButton, speedModal, closeSpeedModal, countdownElem, startOverlay, toast, gameTimerElem;
 
 export function initUI(onRestart, onStart) {
     playerScoreElem = document.getElementById('player-score');
     computerScoreElem = document.getElementById('computer-score');
+    gameTimerElem = document.getElementById('game-timer');
     messageBox = document.getElementById('messageBox');
     messageText = document.getElementById('messageText');
     restartButton = document.getElementById('restartButton');
@@ -29,6 +30,12 @@ export function initUI(onRestart, onStart) {
 export function updateScores(playerScore, computerScore) {
     playerScoreElem.textContent = playerScore;
     computerScoreElem.textContent = computerScore;
+}
+
+export function updateGameTimer(minutes, seconds) {
+    if (gameTimerElem) {
+        gameTimerElem.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    }
 }
 
 export function showMessage(message, showButton = true) {
